@@ -148,15 +148,44 @@ class NewerDatabaseError(RuntimeError):
     pass
 
 
+def _statements(script: str) -> list[str]:
+    out, buf = [], ""
+    for part in script.split(";"):
+        buf += part + ";"
+        if sqlite3.complete_statement(buf):
+            if buf.strip(" \n;"):
+                out.append(buf)
+            buf = ""
+    return out
+
+
 def _migrate(conn: sqlite3.Connection) -> None:
-    current = conn.execute("PRAGMA user_version").fetchone()[0]
-    if current > SCHEMA_VERSION:
+    """Bring the schema up to date. Several threads or processes (the window and
+    a scheduled run) may open a fresh database at once: the write lock is taken
+    before the version is read, so each upgrade runs exactly once."""
+    if conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION:
+        return
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        current = conn.execute("PRAGMA user_version").fetchone()[0]
+        if current > SCHEMA_VERSION:
+            raise NewerDatabaseError()
+        for version in range(current + 1, SCHEMA_VERSION + 1):
+            for stmt in _statements(MIGRATIONS[version - 1]):
+                conn.execute(stmt)
+        conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+        conn.execute("COMMIT")
+    except NewerDatabaseError:
+        conn.execute("ROLLBACK")
+        conn.close()
         # Written by a newer version of the app: refuse rather than risk damaging it.
+        # (The message is looked up only now: that may open the database again.)
         raise NewerDatabaseError(
             _("Dữ liệu được tạo bởi phiên bản {0} mới hơn. Hãy cài lại phiên bản mới nhất.", APP_NAME)
-        )
-    for version in range(current + 1, SCHEMA_VERSION + 1):
-        conn.executescript("BEGIN;" + MIGRATIONS[version - 1] + f";PRAGMA user_version={version};COMMIT;")
+        ) from None
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
 
 
 def connect() -> sqlite3.Connection:

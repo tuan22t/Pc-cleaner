@@ -150,7 +150,8 @@ class ApiTest(unittest.TestCase):
             if self.call("GET", "job")["state"] != "running":
                 break
             time.sleep(0.02)
-        self.assertIn(self.call("GET", "job")["state"], ("done", "cancelled"))
+        st = self.call("GET", "job")
+        self.assertIn(st["state"], ("done", "cancelled"), st)
 
     def test_settings_screens_load(self):
         sched = self.call("GET", "schedule")

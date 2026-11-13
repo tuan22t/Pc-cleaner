@@ -150,6 +150,48 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual((w["bytes"], w["files"], w["root"]), (250, 3, "/r"))
 
 
+class MigrationRaceTest(unittest.TestCase):
+    def test_fresh_database_opened_by_many_threads(self):
+        """The window, a background job and a scheduled run may open a new database at once."""
+        import sqlite3
+        import threading
+
+        for _round in range(5):
+            path = Path(tempfile.mkdtemp(dir=TMP)) / "race.sqlite3"
+            db.reset_for_tests(path)
+            errors, start = [], threading.Event()
+
+            def open_it():
+                start.wait()
+                try:
+                    db.connect()
+                except Exception as e:  # noqa: BLE001
+                    errors.append(e)
+
+            threads = [threading.Thread(target=open_it) for _ in range(8)]
+            for t in threads:
+                t.start()
+            start.set()
+            for t in threads:
+                t.join()
+            self.assertEqual(errors, [])
+            v = sqlite3.connect(path).execute("PRAGMA user_version").fetchone()[0]
+            self.assertEqual(v, db.SCHEMA_VERSION)
+
+    def test_newer_database_refused_and_untouched(self):
+        import sqlite3
+
+        path = Path(tempfile.mkdtemp(dir=TMP)) / "new.sqlite3"
+        c = sqlite3.connect(path)
+        c.execute(f"PRAGMA user_version={db.SCHEMA_VERSION + 1}")
+        c.commit()
+        c.close()
+        db.reset_for_tests(path)
+        with self.assertRaises(db.NewerDatabaseError):
+            db.connect()
+        self.assertEqual(sqlite3.connect(path).execute("PRAGMA user_version").fetchone()[0], db.SCHEMA_VERSION + 1)
+
+
 def tearDownModule():
     shutil.rmtree(TMP, ignore_errors=True)
 
