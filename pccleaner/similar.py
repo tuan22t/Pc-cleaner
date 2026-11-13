@@ -86,11 +86,11 @@ def find_similar(
     conn = db.connect()
     sep = os.sep
     marks = ",".join("?" * len(IMAGE_EXTS))
+    src, args = db.scan_files(conn, scan_id)
     rows = conn.execute(
-        f"""SELECT f.size, f.mtime, rtrim(d.path, ?) || ? || f.name AS path FROM files f
-            JOIN dirs d ON d.scan_id=f.scan_id AND d.id=f.dir_id
-            WHERE f.scan_id=? AND f.size>=? AND f.ext IN ({marks})""",
-        (sep, sep, scan_id, min_size, *IMAGE_EXTS),
+        f"""SELECT f.size, f.mtime, rtrim(d.path, ?) || ? || f.name AS path {src}
+            AND f.size>=? AND f.ext IN ({marks})""",
+        (sep, sep, *args, min_size, *IMAGE_EXTS),
     ).fetchall()
     progress.total = len(rows)
     images: list[tuple[str, int, float, int, int, int]] = []  # path, size, mtime, hash, w, h

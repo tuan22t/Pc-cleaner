@@ -101,19 +101,23 @@ def scan(
 
 def _scan(conn, root, progress, cancel, on_progress, incremental) -> int:
     prev = _previous(conn, root) if incremental and _reuse_allowed(root) else None
-    cur = conn.execute("INSERT INTO scans(root, started) VALUES (?, ?)", (root, time.time()))
+    # Never reuse the id of a deleted scan: newer scans may still point at its file rows.
+    cur = conn.execute(
+        "INSERT INTO scans(id, root, started) VALUES ("
+        "(SELECT MAX(COALESCE((SELECT MAX(id) FROM scans),0), COALESCE((SELECT MAX(scan_id) FROM files),0)) + 1), ?, ?)",
+        (root, time.time()))
     scan_id = cur.lastrowid
     conn.commit()
 
-    prev_dirs: dict[str, tuple[int, float]] = {}
+    prev_dirs: dict[str, tuple[int, float, int, int]] = {}
     prev_children: dict[int, list[str]] = {}
     prev_own: dict[int, tuple[int, int]] = {}
     if prev is not None:
         # A folder's own files = its totals minus those of its sub-folders (no need to read the files).
         for r in conn.execute(
-            "SELECT id, parent_id, path, mtime, size, file_count FROM dirs WHERE scan_id=?", (prev["id"],)
+            "SELECT id, parent_id, path, mtime, size, file_count, fscan, fdir FROM dirs WHERE scan_id=?", (prev["id"],)
         ):
-            prev_dirs[r["path"]] = (r["id"], r["mtime"])
+            prev_dirs[r["path"]] = (r["id"], r["mtime"], r["fscan"], r["fdir"])
             prev_children.setdefault(r["parent_id"], []).append(r["path"])
             own = prev_own.get(r["id"], (0, 0))
             prev_own[r["id"]] = (own[0] + r["size"], own[1] + r["file_count"])
@@ -136,8 +140,9 @@ def _scan(conn, root, progress, cancel, on_progress, incremental) -> int:
     dir_count: list[int] = [0]
     dir_mtime: list[float | None] = [root_mtime]
     file_rows: list[tuple] = []
-    reuse: list[tuple[int, int]] = []  # (previous dir id, new dir id)
+    dir_src: list[tuple[int, int] | None] = [None]  # where a reused folder's file rows live
     stack: list[int] = [0]
+    reused = 0
     last_report = 0.0
 
     def add_dir(path: str, parent: int, mtime) -> None:
@@ -146,6 +151,7 @@ def _scan(conn, root, progress, cancel, on_progress, incremental) -> int:
         dir_size.append(0)
         dir_count.append(0)
         dir_mtime.append(mtime)
+        dir_src.append(None)
         stack.append(len(dir_paths) - 1)
         progress.dirs += 1
 
@@ -166,8 +172,10 @@ def _scan(conn, root, progress, cancel, on_progress, incremental) -> int:
             progress.current = dpath
             old = prev_dirs.get(dpath) if prev is not None else None
             if old is not None and dir_mtime[did] is not None and old[1] == dir_mtime[did] and old[1] < fresh_limit:
-                # Unchanged folder: same files and sub-folders as last time.
-                reuse.append((old[0], did))
+                # Unchanged folder: same files and sub-folders as last time; its
+                # file rows are shared with the earlier scan instead of copied.
+                dir_src[did] = (old[2], old[3])
+                reused += 1
                 size, count = prev_own.get(old[0], (0, 0))
                 dir_size[did] += size
                 dir_count[did] += count
@@ -226,18 +234,6 @@ def _scan(conn, root, progress, cancel, on_progress, incremental) -> int:
                 last_report = now
                 on_progress(progress)
         flush_files()
-        if reuse:
-            conn.execute("CREATE TEMP TABLE IF NOT EXISTS reuse(prev_id INTEGER PRIMARY KEY, new_id INTEGER)")
-            conn.execute("DELETE FROM reuse")
-            conn.executemany("INSERT INTO reuse(prev_id, new_id) VALUES (?,?)", reuse)
-            conn.execute(
-                """INSERT INTO files(scan_id, dir_id, name, ext, size, mtime)
-                   SELECT ?, r.new_id, f.name, f.ext, f.size, f.mtime
-                   FROM files f JOIN reuse r ON f.dir_id = r.prev_id WHERE f.scan_id = ?""",
-                (scan_id, prev["id"]),
-            )
-            conn.execute("DELETE FROM reuse")
-
         # Children always get larger ids than their parent, so one reverse pass
         # rolls sizes up the tree.
         for i in range(len(dir_paths) - 1, 0, -1):
@@ -247,11 +243,12 @@ def _scan(conn, root, progress, cancel, on_progress, incremental) -> int:
 
         rows = (
             (scan_id, i, dir_parent[i], dir_paths[i], os.path.basename(dir_paths[i]) or dir_paths[i],
-             dir_size[i], dir_count[i], dir_mtime[i])
+             dir_size[i], dir_count[i], dir_mtime[i], *(dir_src[i] or (scan_id, i)))
             for i in range(len(dir_paths))
         )
         conn.executemany(
-            "INSERT INTO dirs(scan_id, id, parent_id, path, name, size, file_count, mtime) VALUES (?,?,?,?,?,?,?,?)", rows
+            "INSERT INTO dirs(scan_id, id, parent_id, path, name, size, file_count, mtime, fscan, fdir)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)", rows
         )
         conn.execute(
             "UPDATE scans SET finished=?, status='done', total_size=?, file_count=?, dir_count=?, error_count=? WHERE id=?",
@@ -267,7 +264,7 @@ def _scan(conn, root, progress, cancel, on_progress, incremental) -> int:
         conn.execute("UPDATE scans SET status='error', finished=? WHERE id=?", (time.time(), scan_id))
         conn.commit()
         raise
-    progress.reused_dirs = len(reuse)
+    progress.reused_dirs = reused
     prune_scans(root)
     if on_progress:
         on_progress(progress)
@@ -292,9 +289,15 @@ def cleanup_unfinished() -> int:
 
 
 def delete_scan(scan_id: int) -> None:
+    """Remove a scan. File rows still used by another scan (a later rescan) are kept."""
     conn = db.connect()
-    for table in ("files", "dirs", "dup_groups", "similar_groups"):
+    borrowed = conn.execute(
+        "SELECT fscan, fdir FROM dirs WHERE scan_id=? AND fscan<>?", (scan_id, scan_id)).fetchall()
+    for table in ("dirs", "dup_groups", "similar_groups"):
         conn.execute(f"DELETE FROM {table} WHERE scan_id=?", (scan_id,))
+    unused = "NOT EXISTS (SELECT 1 FROM dirs d WHERE d.fscan=files.scan_id AND d.fdir=files.dir_id)"
+    conn.execute(f"DELETE FROM files WHERE scan_id=? AND {unused}", (scan_id,))
+    conn.executemany(f"DELETE FROM files WHERE scan_id=? AND dir_id=? AND {unused}", [tuple(r) for r in borrowed])
     conn.execute("DELETE FROM scans WHERE id=?", (scan_id,))
     conn.commit()
 
@@ -356,7 +359,7 @@ def children(scan_id: int, dir_id: int = 0, limit: int = 300) -> dict:
     sep = os.sep
     for r in conn.execute(
         "SELECT name, size, mtime FROM files WHERE scan_id=? AND dir_id=? ORDER BY size DESC LIMIT ?",
-        (scan_id, dir_id, limit),
+        (me["fscan"], me["fdir"], limit),
     ):
         items.append({
             "type": "file", "name": r["name"], "path": me["path"].rstrip(sep) + sep + r["name"],
@@ -373,12 +376,14 @@ def children(scan_id: int, dir_id: int = 0, limit: int = 300) -> dict:
 def large_files(scan_id: int, limit: int = 200, min_size: int = 0) -> list[dict]:
     sep = os.sep
 
+    conn = db.connect()
+    src, args = db.scan_files(conn, scan_id)
+
     def query(extra: str):
-        return db.connect().execute(
-            f"""SELECT f.name, f.size, f.mtime, f.ext, d.path AS dpath FROM files f
-               JOIN dirs d ON d.scan_id=f.scan_id AND d.id=f.dir_id
-               WHERE f.scan_id=? AND f.size>=? {extra} ORDER BY f.size DESC LIMIT ?""",
-            (scan_id, min_size, limit),
+        return conn.execute(
+            f"""SELECT f.name, f.size, f.mtime, f.ext, d.path AS dpath {src}
+               AND f.size>=? {extra} ORDER BY f.size DESC LIMIT ?""",
+            (*args, min_size, limit),
         ).fetchall()
 
     rows = query("AND f." + db.BIG_FILE_SQL)  # fast: uses the index of files >= 64 KB
@@ -396,9 +401,9 @@ def large_files(scan_id: int, limit: int = 200, min_size: int = 0) -> list[dict]
 
 def type_breakdown(scan_id: int) -> dict:
     conn = db.connect()
+    src, args = db.scan_files(conn, scan_id)
     by_ext = conn.execute(
-        "SELECT ext, SUM(size) AS size, COUNT(*) AS n FROM files WHERE scan_id=? GROUP BY ext ORDER BY size DESC",
-        (scan_id,),
+        f"SELECT f.ext AS ext, SUM(f.size) AS size, COUNT(*) AS n {src} GROUP BY f.ext ORDER BY size DESC", args,
     ).fetchall()
     cats: dict[str, dict] = {}
     for r in by_ext:
@@ -418,11 +423,12 @@ def old_files(scan_id: int, older_than_days: int = 365, min_size: int = 50 * 102
     cutoff = time.time() - older_than_days * 86400
     sep = os.sep
     big = ("AND f." + db.BIG_FILE_SQL) if min_size >= db.BIG_FILE else ""
-    rows = db.connect().execute(
-        f"""SELECT f.name, f.size, f.mtime, f.ext, d.path AS dpath FROM files f
-           JOIN dirs d ON d.scan_id=f.scan_id AND d.id=f.dir_id
-           WHERE f.scan_id=? AND f.size>=? {big} AND f.mtime<? ORDER BY f.size DESC LIMIT ?""",
-        (scan_id, min_size, cutoff, limit),
+    conn = db.connect()
+    src, args = db.scan_files(conn, scan_id)
+    rows = conn.execute(
+        f"""SELECT f.name, f.size, f.mtime, f.ext, d.path AS dpath {src}
+           AND f.size>=? {big} AND f.mtime<? ORDER BY f.size DESC LIMIT ?""",
+        (*args, min_size, cutoff, limit),
     ).fetchall()
     return [
         {"path": (p := r["dpath"].rstrip(sep) + sep + r["name"]), "name": r["name"], "size": r["size"],

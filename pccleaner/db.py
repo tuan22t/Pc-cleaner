@@ -126,6 +126,12 @@ MIGRATIONS: list[str] = [
     # writing a scan (and copying rows on a rescan) is about twice as fast.
     "DROP INDEX IF EXISTS files_size;"
     "CREATE INDEX IF NOT EXISTS files_big ON files(scan_id, size) WHERE size >= 65536;",
+    # 5: a folder's file rows may belong to an earlier scan (fscan, fdir): a rescan
+    # points unchanged folders at them instead of copying every row again.
+    "ALTER TABLE dirs ADD COLUMN fscan INTEGER;"
+    "ALTER TABLE dirs ADD COLUMN fdir INTEGER;"
+    "UPDATE dirs SET fscan=scan_id, fdir=id;"
+    "CREATE INDEX IF NOT EXISTS dirs_src ON dirs(fscan, fdir, scan_id);",
 ]
 # Queries on size can use the files_big index only when they repeat this
 # condition literally (SQLite does not match it against a bound parameter).
@@ -182,3 +188,16 @@ def set_setting(key: str, value) -> None:
     conn = connect()
     conn.execute("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
     conn.commit()
+
+
+def scan_sources(conn, scan_id: int) -> list[int]:
+    """The scans whose file rows make up ``scan_id`` (itself plus any it reuses)."""
+    return [r[0] for r in conn.execute("SELECT DISTINCT fscan FROM dirs WHERE scan_id=?", (scan_id,))] or [scan_id]
+
+
+def scan_files(conn, scan_id: int) -> tuple[str, list]:
+    """SQL (FROM … WHERE …, aliases f and d) and parameters selecting every file of a scan."""
+    src = scan_sources(conn, scan_id)
+    marks = ",".join("?" * len(src))
+    return (f"FROM files f JOIN dirs d ON d.scan_id=? AND d.fscan=f.scan_id AND d.fdir=f.dir_id "
+            f"WHERE f.scan_id IN ({marks})", [scan_id, *src])

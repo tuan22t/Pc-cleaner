@@ -36,8 +36,8 @@ def snapshot(scan_id: int) -> tuple:
     files = sorted(
         (r["path"], r["name"], r["size"])
         for r in conn.execute(
-            "SELECT d.path, f.name, f.size FROM files f JOIN dirs d ON d.scan_id=f.scan_id AND d.id=f.dir_id"
-            " WHERE f.scan_id=?", (scan_id,))
+            "SELECT d.path, f.name, f.size FROM files f JOIN dirs d ON d.fscan=f.scan_id AND d.fdir=f.dir_id"
+            " WHERE d.scan_id=?", (scan_id,))
     )
     dirs = sorted(
         (r["path"], r["size"], r["file_count"])
@@ -93,6 +93,22 @@ class IncrementalScanTest(Base):
         self.assertGreater(reused, 0)
         self.assertEqual(inc, self.full())
 
+    def test_rescan_shares_rows_and_reports_match(self):
+        self.tree()
+        first = scanner.scan(str(self.root), incremental=False)
+        rows_before = db.connect().execute("SELECT COUNT(*) FROM files").fetchone()[0]
+        (self.root / "d0" / "inner" / "big.bin").write_bytes(b"b" * 70_000)
+        second = scanner.scan(str(self.root))
+        rows_after = db.connect().execute("SELECT COUNT(*) FROM files").fetchone()[0]
+        self.assertLess(rows_after - rows_before, 10)  # only the changed folder is written again
+        full = scanner.scan(str(self.root), incremental=False)
+        for fn in (lambda s: scanner.large_files(s, 50), lambda s: scanner.type_breakdown(s),
+                   lambda s: scanner.old_files(s, 0, 1), lambda s: sorted(
+                       (i["name"], i["size"]) for i in scanner.children(s, 0)["items"])):
+            self.assertEqual(fn(second), fn(full))
+        scanner.delete_scan(first)  # the rescan still reads its shared rows
+        self.assertEqual(snapshot(second)[1], snapshot(full)[1])
+
     def test_folder_changed_right_after_last_scan_is_read_again(self):
         self.tree()
         self.full()
@@ -131,8 +147,13 @@ class IncrementalScanTest(Base):
         ids = [scanner.scan(str(self.root)) for _ in range(5)]
         left = [r[0] for r in db.connect().execute("SELECT id FROM scans WHERE root=? ORDER BY id", (str(self.root),))]
         self.assertEqual(left, ids[-scanner.KEEP_SCANS_PER_FOLDER:])
-        orphans = db.connect().execute("SELECT COUNT(*) FROM files WHERE scan_id NOT IN (SELECT id FROM scans)").fetchone()[0]
+        orphans = db.connect().execute(
+            "SELECT COUNT(*) FROM files f WHERE NOT EXISTS"
+            " (SELECT 1 FROM dirs d WHERE d.fscan=f.scan_id AND d.fdir=f.dir_id)").fetchone()[0]
         self.assertEqual(orphans, 0)
+        # Every kept scan still reads back complete after the older ones are gone.
+        for sid in left:
+            self.assertEqual(len(snapshot(sid)[1]), 2)
 
     def test_cancelled_scan_leaves_nothing(self):
         self.tree()
