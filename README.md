@@ -2,6 +2,8 @@
 
 Ứng dụng dọn dẹp ổ đĩa cho **Windows** và **macOS**, viết bằng Python, giao diện cửa sổ (pywebview).
 
+Tài liệu thuyết minh tính năng và nguyên lý hoạt động: [docs/thuyet-minh.md](docs/thuyet-minh.md).
+
 ## Tính năng hiện có (giai đoạn 1–2)
 
 - **Tổng quan ổ đĩa**: dung lượng đã dùng/còn trống của từng ổ và thư mục cá nhân.
