@@ -77,6 +77,9 @@ jobs:
 
   # The version comes from pccleaner/__init__.py, so the packages always match the app.
   windows-installer:
+    # Packaging and install checks cost most of the CI minutes (macOS counts 10x):
+    # run them for main, release tags and a manual run, not on every PR push.
+    if: github.event_name != 'pull_request'
     needs: test
     runs-on: windows-2022
     env:
@@ -121,6 +124,9 @@ jobs:
         run: Get-AuthenticodeSignature dist\PCCleaner-Setup-*.exe | Format-List Status, StatusMessage, SignerCertificate
 
   mac-dmg:
+    # Packaging and install checks cost most of the CI minutes (macOS counts 10x):
+    # run them for main, release tags and a manual run, not on every PR push.
+    if: github.event_name != 'pull_request'
     needs: test
     runs-on: macos-latest
     env:
