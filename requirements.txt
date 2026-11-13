@@ -1,0 +1,2 @@
+# Cửa sổ ứng dụng riêng (không bắt buộc: thiếu thì ứng dụng mở trong trình duyệt)
+pywebview>=5.0
