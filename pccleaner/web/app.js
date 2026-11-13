@@ -4,12 +4,13 @@ try { sessionStorage.setItem("pcc_token", TOKEN); } catch (e) {}
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const COLORS = ["--c1", "--c2", "--c3", "--c5", "--c6", "--c7", "--c4", "--c8"].map((v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim());
-const SELECTABLE = { large: "File lớn", old: "File cũ", dups: "File trùng lặp" };
+const SELECTABLE = { large: "File lớn", old: "File cũ", dups: "File trùng lặp", similar: "Ảnh giống nhau" };
 
 const state = {
   scanId: null, dirId: 0, view: "home", info: null,
-  sel: { large: new Map(), old: new Map(), dups: new Map() }, // path -> size
-  shown: { large: [], old: [], dups: [] },                       // selectable paths on screen
+  sel: { large: new Map(), old: new Map(), dups: new Map(), similar: new Map() }, // path -> size
+  shown: { large: [], old: [], dups: [], similar: [] },                            // selectable paths on screen
+  junk: null, startup: null, startupFilter: "all", restorePointDone: false, org: null,
   polling: null, lastJob: null,
 };
 
@@ -47,14 +48,15 @@ function toast(msg, opts = {}) {
   else b.classList.add("hidden");
   clearTimeout(t._h); t._h = setTimeout(() => t.classList.add("hidden"), opts.action ? 10000 : 5000);
 }
-function dialog(title, html, ok = "Đồng ý", cancel = "Hủy") {
+function dialog(title, html, ok = "Đồng ý", cancel = "Hủy", alt = null) {
   return new Promise((res) => {
     $("#modalTitle").textContent = title; $("#modalBody").innerHTML = html;
     $("#modalOk").textContent = ok; $("#modalCancel").textContent = cancel || "";
     $("#modalCancel").classList.toggle("hidden", !cancel);
+    $("#modalAlt").textContent = alt || ""; $("#modalAlt").classList.toggle("hidden", !alt);
     $("#modal").classList.remove("hidden"); $("#modalOk").focus();
-    const done = (v) => { $("#modal").classList.add("hidden"); $("#modalOk").onclick = $("#modalCancel").onclick = null; res(v); };
-    $("#modalOk").onclick = () => done(true); $("#modalCancel").onclick = () => done(false);
+    const done = (v) => { $("#modal").classList.add("hidden"); $("#modalOk").onclick = $("#modalCancel").onclick = $("#modalAlt").onclick = null; res(v); };
+    $("#modalOk").onclick = () => done(true); $("#modalCancel").onclick = () => done(false); $("#modalAlt").onclick = () => done("alt");
   });
 }
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#modal").classList.contains("hidden")) $("#modalCancel").click(); });
@@ -78,12 +80,17 @@ async function render(view) {
   try {
     if (view === "home") return await renderHome();
     if (view === "quarantine") return await renderQuarantine();
+    if (view === "junk") return renderJunk();
+    if (view === "startup") return await renderStartup();
+    if (view === "organize") return renderOrganize();
+    if (view === "schedule") return await renderSchedule();
     if (!state.scanId) return show("home");
     if (view === "usage") return await renderUsage();
     if (view === "large") return await renderLarge();
     if (view === "old") return await renderOld();
     if (view === "types") return await renderTypes();
     if (view === "dups") return await renderDups();
+    if (view === "similar") return await renderSimilar();
   } catch (e) { toast(e.message, { err: true }); }
 }
 
@@ -140,7 +147,7 @@ function pollJob() {
     if (!j) return;
     const bar = $("#jobBar");
     const busy = j.state === "running";
-    $$("[data-scan], #customScanBtn, #dupRun, #pickFolderBtn").forEach((b) => b.disabled = busy);
+    $$("[data-scan], #customScanBtn, #dupRun, #simRun, #junkRun, #pickFolderBtn").forEach((b) => b.disabled = busy);
     if (busy) {
       bar.classList.remove("hidden");
       const p = j.progress || {}; const el = dur(Date.now() / 1000 - j.started);
@@ -150,7 +157,8 @@ function pollJob() {
         $(".progress").classList.add("indeterminate"); $("#jobProgress").style.width = "30%";
       } else {
         const pct = p.total ? Math.floor(100 * p.done / p.total) : 0;
-        $("#jobTitle").textContent = `Đang tìm file trùng: ${p.stage || ""}${p.total ? ` (${pct}%)` : ""}`;
+        const what = { duplicates: "Đang tìm file trùng", similar: "Đang tìm ảnh giống nhau", junk: "Đang kiểm tra rác hệ thống" }[j.kind] || "Đang xử lý";
+        $("#jobTitle").textContent = `${what}: ${p.stage || ""}${p.total ? ` (${pct}%)` : ""}`;
         $("#jobDetail").textContent = `${el}${p.total ? ` · ${num(p.done)}/${num(p.total)} file` : ""}`;
         $(".progress").classList.toggle("indeterminate", !p.total);
         $("#jobProgress").style.width = p.total ? pct + "%" : "30%";
@@ -162,6 +170,8 @@ function pollJob() {
     state.lastJob = j.started;
     if (j.state === "done" && j.kind === "scan") { await loadScans(); selectScan(j.result); toast("Quét xong. Đây là các thư mục chiếm nhiều chỗ nhất."); show("usage"); }
     else if (j.state === "done" && j.kind === "duplicates") { toast(j.result ? `Tìm thấy ${j.result} nhóm file trùng.` : "Không có file trùng nào. Máy anh/chị khá gọn!"); if (state.view === "dups") renderDups(); }
+    else if (j.state === "done" && j.kind === "similar") { toast(j.result ? `Tìm thấy ${j.result} nhóm ảnh giống nhau.` : "Không có ảnh nào giống nhau."); if (state.view === "similar") renderSimilar(); }
+    else if (j.state === "done" && j.kind === "junk") { state.junk = j.result; renderJunk(); }
     else if (j.state === "cancelled") toast("Đã dừng lại.");
     else if (j.state === "error") toast("Có lỗi: " + j.error, { err: true });
   };
@@ -237,10 +247,10 @@ function bindSelection(scope, key) {
   state.shown[key] = $$(scope + ` [data-sel="${key}"]`).map((c) => c.value);
   $$(scope + ` [data-sel="${key}"]`).forEach((c) => c.onchange = () => {
     c.checked ? state.sel[key].set(c.value, +c.dataset.size) : state.sel[key].delete(c.value);
-    c.closest(".row").classList.toggle("checked", c.checked);
+    c.closest(".row, .photo").classList.toggle("checked", c.checked);
     updateActionBar();
   });
-  $$(scope + ` [data-sel="${key}"]:checked`).forEach((c) => c.closest(".row").classList.add("checked"));
+  $$(scope + ` [data-sel="${key}"]:checked`).forEach((c) => c.closest(".row, .photo").classList.add("checked"));
   bindReveal(scope); updateActionBar();
 }
 function updateActionBar() {
@@ -255,7 +265,7 @@ function updateActionBar() {
   const all = state.shown[key];
   $("#selAll").checked = all.length > 0 && all.every((p) => sel.has(p));
   $("#selAll").indeterminate = !$("#selAll").checked && all.some((p) => sel.has(p));
-  $(".selall").classList.toggle("hidden", key === "dups");
+  $("#actionBar .selall").classList.toggle("hidden", key === "dups" || key === "similar");
 }
 $("#selAll").onchange = (e) => {
   const key = state.view; $$(`#view-${key} [data-sel="${key}"]`).forEach((c) => { if (c.checked !== e.target.checked) { c.checked = e.target.checked; c.onchange(); } });
@@ -328,6 +338,7 @@ $("#selClean").onclick = async () => {
   try {
     const body = { paths: files, reason: SELECTABLE[key] };
     if (key === "dups") body.dup_scan_id = state.scanId;
+    if (key === "similar") body.similar_scan_id = state.scanId;
     const r = await api("quarantine", body);
     sel.clear(); refreshBadge();
     if (r.failed.length) {
@@ -350,24 +361,24 @@ async function undo(batchId) {
 // ---------- quarantine ----------
 async function refreshBadge() {
   const batches = await api("batches").catch(() => []);
-  const pending = batches.reduce((a, b) => a + (b.pending || 0), 0);
+  const pending = batches.filter((b) => !b.moves).reduce((a, b) => a + (b.pending || 0), 0);
   $("#qBadge").textContent = num(pending); $("#qBadge").classList.toggle("hidden", !pending);
   return batches;
 }
 async function renderQuarantine() {
   const [batches, log] = await Promise.all([refreshBadge(), api("log")]);
   const visible = batches.filter((b) => b.files > 0);
-  const pendingFiles = visible.reduce((a, b) => a + (b.pending || 0), 0);
-  const pendingBytes = visible.filter((b) => b.pending).reduce((a, b) => a + (b.bytes || 0), 0);
+  const pendingFiles = visible.filter((b) => !b.moves).reduce((a, b) => a + (b.pending || 0), 0);
+  const pendingBytes = visible.filter((b) => b.pending && !b.moves).reduce((a, b) => a + (b.bytes || 0), 0);
   $("#qSummary").innerHTML = pendingFiles ? `Đang cất giữ <b>${num(pendingFiles)} file</b> (khoảng ${fmt(pendingBytes)}).` : "";
   $("#batchList").innerHTML = visible.length ? `<div class="row head"><div class="name">Lần dọn</div><span class="kind">Trạng thái</span><div class="size">Dung lượng</div><span class="acts2"></span></div>` + visible.map((b) => `
     <div class="row"><div class="name"><div class="t">${esc(b.reason || "Dọn dẹp")} · ${num(b.files)} file</div><div class="p">${fmtDate(b.ts)}</div></div>
-    <span class="kind"><span class="tag ${b.pending ? "" : "ok"}">${b.pending ? "Đang cất giữ" : b.purged ? "Đã xóa vĩnh viễn" : "Đã lấy lại"}</span></span>
+    <span class="kind"><span class="tag ${b.pending ? "" : "ok"}">${b.moves ? (b.pending ? "Đã sắp xếp" : "Đã hoàn tác") : b.pending ? "Đang cất giữ" : b.purged ? "Đã xóa vĩnh viễn" : "Đã lấy lại"}</span></span>
     <div class="size">${fmt(b.bytes)}</div>
-    <span class="acts2">${b.pending ? `<button class="btn small primary" data-restore="${b.batch_id}">↩ Lấy lại</button>
+    <span class="acts2">${b.pending && b.moves ? `<button class="btn small primary" data-restore="${b.batch_id}">↩ Hoàn tác</button>` : b.pending ? `<button class="btn small primary" data-restore="${b.batch_id}">↩ Lấy lại</button>
     <button class="btn small ghost danger-text" data-purge="${b.batch_id}">Xóa vĩnh viễn</button>` : ""}</span></div>`).join("")
     : `<div class="empty">Khu cách ly đang trống. Các file anh/chị dọn sẽ xuất hiện ở đây.</div>`;
-  const kinds = { quarantine: "Đã dọn", restore: "Lấy lại", purge: "Xóa vĩnh viễn", error: "Giữ nguyên" };
+  const kinds = { quarantine: "Đã dọn", restore: "Lấy lại", purge: "Xóa vĩnh viễn", error: "Giữ nguyên", move: "Sắp xếp" };
   $("#logList").innerHTML = log.length ? log.map((a) => `<div class="row"><span class="when">${fmtDate(a.ts)}</span>
     <span class="tag ${a.kind === "error" ? "keep" : ""}">${kinds[a.kind] || a.kind}</span><div class="name"><div class="t">${esc(a.path)}</div>${a.kind === "error" ? `<div class="p">${esc(a.reason || "")}</div>` : ""}</div><div class="size">${a.size ? fmt(a.size) : ""}</div></div>`).join("")
     : `<div class="empty">Chưa có thao tác nào.</div>`;
@@ -379,6 +390,197 @@ async function renderQuarantine() {
     renderQuarantine();
   });
 }
+
+// ---------- similar photos ----------
+$("#simRun").onclick = async () => {
+  try { await api("similar", { scan_id: state.scanId, threshold: +$("#simThreshold").value }); pollJob(); } catch (e) { toast(e.message, { err: true }); }
+};
+const thumbUrl = (p) => `/api/thumb?t=${encodeURIComponent(TOKEN)}&path=${encodeURIComponent(p)}`;
+async function renderSimilar() {
+  const d = await api(`scan/${state.scanId}/similar`);
+  const sel = state.sel.similar; sel.clear();
+  $("#simSummary").innerHTML = d.group_count
+    ? `Tìm thấy <b>${num(d.group_count)} nhóm</b> ảnh giống nhau, dọn bớt có thể giải phóng khoảng <b>${fmt(d.saving)}</b>.<br><span class="muted">Ảnh có nhãn “Giữ lại” là ảnh nét nhất (độ phân giải cao nhất) của nhóm. Hãy xem kỹ ảnh trước khi dọn.</span>`
+    : `<div class="empty">Chưa có kết quả. Bấm “Tìm ảnh giống nhau” để bắt đầu.</div>`;
+  $("#simList").innerHTML = d.groups.map((g) => `<div class="group"><div class="group-head"><b>${g.files.length} ảnh giống nhau</b><span class="muted">dọn bớt được ${fmt(g.saving)}</span></div>
+    <div class="photo-grid">${g.files.map((f, i) => {
+      const keep = i === 0 && f.exists;
+      if (!keep && f.exists && !f.protected) sel.set(f.path, f.size);
+      const name = f.path.split(/[\\/]/).pop();
+      return `<label class="photo ${keep ? "keep" : ""} ${!f.exists ? "gone" : ""}" title="${esc(f.path)}">
+        <div class="ph-img">${f.exists ? `<img loading="lazy" src="${thumbUrl(f.path)}" alt="">` : "Đã dọn"}</div>
+        <div class="ph-meta">${f.exists && !f.protected ? `<input type="checkbox" data-sel="similar" data-size="${f.size}" value="${esc(f.path)}" ${sel.has(f.path) ? "checked" : ""}>` : f.protected ? "🔒" : ""}
+          <div class="name"><div class="t">${esc(name)}</div><div class="p">${f.width}×${f.height} · ${fmt(f.size)}</div></div></div>
+        ${keep ? '<span class="tag ok ph-tag">✓ Giữ lại</span>' : ""}
+        ${f.exists ? `<button class="btn small ghost ph-open" data-reveal="${esc(f.path)}" title="Xem vị trí">📂</button>` : ""}
+      </label>`;
+    }).join("")}</div></div>`).join("");
+  bindSelection("#view-similar", "similar");
+}
+
+// ---------- system junk ----------
+$("#junkRun").onclick = async () => { try { await api("junk-scan", {}); pollJob(); } catch (e) { toast(e.message, { err: true }); } };
+function renderJunk() {
+  const list = state.junk;
+  if (!list) {
+    $("#junkList").innerHTML = `<div class="empty">Bấm “Kiểm tra rác hệ thống” để xem máy đang có bao nhiêu rác. Việc kiểm tra chỉ đọc, chưa xóa gì.</div>`;
+    $("#junkBar").classList.add("hidden"); $("#junkInfo").textContent = ""; return;
+  }
+  const total = list.reduce((a, c) => a + c.size, 0);
+  $("#junkInfo").innerHTML = `Tìm thấy tổng cộng <b>${fmt(total)}</b>`;
+  $("#junkList").innerHTML = list.map((c) => `
+    <label class="row ${c.count ? "pick" : "locked"}">
+      <span class="cb">${c.count ? `<input type="checkbox" data-junk="${c.id}" data-size="${c.size}" ${c.selected ? "checked" : ""}>` : ""}</span>
+      <div class="name"><div class="t">${esc(c.name)} ${c.label === "safe" ? '<span class="tag ok">An toàn</span>' : '<span class="tag warn-tag">Cân nhắc</span>'}${c.admin ? ' <span class="tag" title="Một số file cần quyền quản trị; file không đủ quyền sẽ được bỏ qua.">Cần quyền quản trị</span>' : ""}</div>
+        <div class="p wrap">${esc(c.desc)}</div></div>
+      <span class="when">${c.count ? num(c.count) + " file" : "Sạch"}</span>
+      <div class="size">${c.count ? fmt(c.size) : "—"}</div>
+    </label>`).join("") || `<div class="empty">Không tìm thấy rác.</div>`;
+  const upd = () => {
+    let n = 0, sz = 0; $$("[data-junk]:checked").forEach((c) => { n++; sz += +c.dataset.size; c.closest(".row").classList.add("checked"); });
+    $$("[data-junk]:not(:checked)").forEach((c) => c.closest(".row").classList.remove("checked"));
+    $("#junkSel").innerHTML = n ? `Đã chọn <b>${n} mục</b> · khoảng <b>${fmt(sz)}</b>` : `<span class="muted">Chưa chọn mục nào</span>`;
+    $("#junkClean").disabled = !n;
+  };
+  $$("[data-junk]").forEach((c) => c.onchange = upd);
+  $("#junkBar").classList.toggle("hidden", !list.some((c) => c.count)); upd();
+}
+$("#junkClean").onclick = async () => {
+  const ids = $$("[data-junk]:checked").map((c) => c.dataset.junk);
+  if (!ids.length) return;
+  if (!(await dialog("Dọn rác hệ thống?", "<p>Các file sẽ được chuyển vào <b>Khu cách ly</b> (lấy lại được). File đang được chương trình khác sử dụng hoặc cần quyền quản trị sẽ được bỏ qua.</p><p class=\"muted\">Nên đóng trình duyệt trước khi dọn bộ nhớ đệm trình duyệt.</p>", "🧹 Dọn ngay"))) return;
+  try {
+    const r = await api("junk-clean", { ids });
+    toast(`Đã dọn ${num(r.moved)} file rác (${fmt(r.bytes)}).${r.skipped ? ` Bỏ qua ${num(r.skipped)} file đang dùng hoặc cần quyền.` : ""}`,
+      r.batch_ids.length ? { action: "↩ Hoàn tác", onAction: async () => { for (const b of r.batch_ids) await api("restore", { batch_id: b }); toast("Đã trả lại các file rác về chỗ cũ."); refreshBadge(); } } : {});
+    refreshBadge(); state.junk = null; await api("junk-scan", {}); pollJob();
+  } catch (e) { toast(e.message, { err: true }); }
+};
+
+// ---------- startup programs ----------
+const LABELS = { safe: ['ok', "Có thể tắt"], unknown: ['', "Chưa rõ"], keep: ['keep', "Nên giữ"] };
+$$("#startupFilter .chip").forEach((b) => b.onclick = () => { state.startupFilter = b.dataset.f; $$("#startupFilter .chip").forEach((x) => x.classList.toggle("active", x === b)); drawStartup(); });
+$("#startupReload").onclick = () => { state.startup = null; renderStartup(); };
+async function renderStartup() {
+  if (!state.startup) {
+    $("#startupList").innerHTML = `<div class="empty"><div class="spinner inline"></div> Đang đọc danh sách chương trình…</div>`;
+    try { state.startup = await api("startup"); } catch (e) { $("#startupList").innerHTML = `<div class="empty">Không đọc được: ${esc(e.message)}</div>`; return; }
+  }
+  const plat = state.info ? state.info.platform : "";
+  $("#startupNote").innerHTML = plat === "windows"
+    ? `<div class="info">Với mục có nhãn <b>Cần quyền quản trị</b>, Windows sẽ hỏi “Cho phép ứng dụng thay đổi thiết bị?”. Trước lần thay đổi đầu tiên, ứng dụng sẽ đề nghị tạo <b>điểm khôi phục hệ thống</b> để có thể quay lại nếu cần.</div>`
+    : plat === "mac" ? `<div class="info">macOS có thể hỏi quyền điều khiển “System Events” khi đọc mục đăng nhập. Mục <b>Dịch vụ hệ thống</b> cần nhập mật khẩu máy.</div>`
+    : `<div class="info">Tính năng này dành cho Windows và macOS.</div>`;
+  drawStartup();
+}
+function drawStartup() {
+  const items = (state.startup && state.startup.items) || [];
+  const f = state.startupFilter;
+  const shown = items.filter((i) => f === "all" || (f === "off" ? !i.enabled : i.label === f));
+  $("#startupList").innerHTML = shown.length ? shown.map((i) => {
+    const [cls, txt] = LABELS[i.label] || ["", i.label];
+    return `<div class="row ${i.enabled ? "" : "is-off"}">
+      <div class="name"><div class="t">${esc(i.name)} <span class="tag ${cls}" title="${esc(i.why)}">${txt}</span>${i.admin ? ' <span class="tag">Cần quyền quản trị</span>' : ""}</div>
+        <div class="p">${esc(i.where)}${i.command ? " · " + esc(i.command) : ""}</div><div class="p why">${esc(i.why)}</div></div>
+      <label class="switch" title="${i.enabled ? "Đang bật – bấm để tắt" : "Đang tắt – bấm để bật lại"}"><input type="checkbox" data-startup="${esc(i.id)}" ${i.enabled ? "checked" : ""}><span></span></label>
+      <span class="state">${i.enabled ? "Đang bật" : "Đã tắt"}</span>
+    </div>`;
+  }).join("") : `<div class="empty">${items.length ? "Không có mục nào trong nhóm này." : "Không có chương trình nào tự khởi động."}</div>`;
+  $$("[data-startup]").forEach((c) => c.onchange = () => toggleStartup(c.dataset.startup, c.checked, c));
+}
+async function toggleStartup(id, enable, el) {
+  const item = state.startup.items.find((i) => i.id === id);
+  el.disabled = true;
+  try {
+    if (!enable && item.admin && state.info.platform === "windows" && !state.restorePointDone) {
+      const ans = await dialog("Tạo điểm khôi phục trước?",
+        "<p>Mục này cần quyền quản trị. Nên tạo <b>điểm khôi phục hệ thống</b> trước để có thể đưa Windows về trạng thái hiện tại nếu có trục trặc.</p><p class=\"muted\">Windows sẽ hỏi quyền quản trị. Việc tạo mất khoảng một phút.</p>",
+        "Tạo điểm khôi phục rồi tắt", "Hủy", "Tắt luôn");
+      if (!ans) { el.checked = !enable; return; }
+      if (ans === true) {
+        toast("Đang tạo điểm khôi phục…");
+        const r = await api("restore-point", {});
+        if (!r.ok && !(await dialog("Chưa tạo được điểm khôi phục", `<p>${esc(r.error || "")}</p><p>Vẫn tiếp tục tắt? Anh/chị vẫn có thể bật lại mục này trong ứng dụng.</p>`, "Vẫn tắt"))) { el.checked = !enable; return; }
+        if (r.ok) toast("Đã tạo điểm khôi phục.");
+      }
+      state.restorePointDone = true;
+    }
+    await api("startup-set", { id, enable });
+    item.enabled = enable;
+    toast(enable ? `Đã bật lại “${item.name}”.` : `Đã tắt “${item.name}”. Lần khởi động sau nó sẽ không tự chạy.`,
+      enable ? {} : { action: "↩ Bật lại", onAction: async () => { await api("startup-set", { id, enable: true }); item.enabled = true; drawStartup(); toast(`Đã bật lại “${item.name}”.`); } });
+    drawStartup();
+  } catch (e) { el.checked = !enable; toast(e.message, { err: true }); }
+  finally { el.disabled = false; }
+}
+
+// ---------- folder organizer ----------
+function renderOrganize() {
+  const info = state.info || {}; const sep = info.platform === "windows" ? "\\" : "/";
+  $("#orgQuick").innerHTML = ["Downloads", "Desktop", "Documents"].map((n) => `<button class="btn small ghost" data-org="${esc(info.home + sep + n)}">${{ Downloads: "📥 Downloads", Desktop: "🖥️ Desktop", Documents: "📄 Documents" }[n]}</button>`).join(" ");
+  $$("[data-org]").forEach((b) => b.onclick = () => { $("#orgPath").value = b.dataset.org; previewOrganize(); });
+  $("#orgPick").classList.toggle("hidden", !info.can_pick_folder);
+  if (!state.org) { $("#orgSummary").innerHTML = ""; $("#orgList").classList.add("hidden"); $("#orgBar").classList.add("hidden"); }
+}
+$("#orgPick").onclick = async () => { try { const r = await api("pick-folder", {}); if (r.path) { $("#orgPath").value = r.path; previewOrganize(); } } catch (e) { toast(e.message, { err: true }); } };
+$("#orgPreview").onclick = () => previewOrganize();
+$("#orgByYear").onchange = () => { if (state.org) previewOrganize(); };
+async function previewOrganize() {
+  const folder = $("#orgPath").value.trim();
+  if (!folder) { toast("Hãy chọn thư mục trước."); return; }
+  try { state.org = await api("organize-preview", { folder, by_year: $("#orgByYear").checked }); } catch (e) { toast(e.message, { err: true }); return; }
+  const o = state.org;
+  if (!o.moves.length) { $("#orgSummary").innerHTML = `<div class="empty">Thư mục này đã gọn gàng: không có file lẻ nào cần sắp xếp.</div>`; $("#orgList").classList.add("hidden"); $("#orgBar").classList.add("hidden"); return; }
+  $("#orgSummary").innerHTML = `Sẽ sắp xếp <b>${num(o.moves.length)} file</b> trong <b>${esc(o.folder)}</b> vào các thư mục:<div class="chips static">${o.summary.map((s) => `<span class="chip">📁 ${esc(s.target)} <b>${num(s.count)}</b></span>`).join("")}</div><span class="muted">Thư mục con có sẵn được giữ nguyên. Không file nào bị ghi đè; file trùng tên sẽ được thêm số (2), (3)…</span>`;
+  $("#orgList").classList.remove("hidden");
+  $("#orgList").innerHTML = `<div class="row head"><span class="cb"><input type="checkbox" id="orgAll" checked></span><div class="name">File</div><span class="arrow"></span><div class="target">Chuyển vào</div><div class="size">Dung lượng</div></div>` +
+    o.moves.map((m) => `<label class="row pick checked"><span class="cb"><input type="checkbox" data-orgsel value="${esc(m.src)}" checked></span>
+      <div class="name"><div class="t">${esc(m.name)}</div>${m.renamed ? `<div class="p">sẽ đổi tên thành ${esc(m.dest.split(/[\\/]/).pop())} vì trùng tên</div>` : ""}</div>
+      <span class="arrow">→</span><div class="target">📁 ${esc(m.target)}</div><div class="size">${fmt(m.size)}</div></label>`).join("");
+  const upd = () => {
+    const n = $$("[data-orgsel]:checked").length;
+    $$("[data-orgsel]").forEach((c) => c.closest(".row").classList.toggle("checked", c.checked));
+    $("#orgSel").innerHTML = n ? `Đã chọn <b>${num(n)} file</b>` : `<span class="muted">Chưa chọn file nào</span>`;
+    $("#orgApply").disabled = !n; $("#orgApply").textContent = n ? `📦 Sắp xếp ${num(n)} file` : "📦 Sắp xếp";
+    $("#orgAll").checked = n === o.moves.length; $("#orgAll").indeterminate = n > 0 && n < o.moves.length;
+  };
+  $$("[data-orgsel]").forEach((c) => c.onchange = upd);
+  $("#orgAll").onchange = (e) => { $$("[data-orgsel]").forEach((c) => c.checked = e.target.checked); upd(); };
+  $("#orgBar").classList.remove("hidden"); upd();
+}
+$("#orgApply").onclick = async () => {
+  const chosen = $$("[data-orgsel]:checked").map((c) => c.value);
+  if (!chosen.length) return;
+  try {
+    const r = await api("organize-apply", { folder: state.org.folder, chosen, by_year: $("#orgByYear").checked });
+    toast(`Đã sắp xếp ${num(r.moved)} file.` + (r.failed.length ? ` ${num(r.failed.length)} file giữ nguyên.` : ""),
+      { err: r.failed.length > 0, action: "↩ Hoàn tác", onAction: () => undo(r.batch_id).then(previewOrganize) });
+    previewOrganize();
+  } catch (e) { toast(e.message, { err: true }); }
+};
+
+// ---------- schedule ----------
+$("#schHour").innerHTML = Array.from({ length: 24 }, (_, h) => `<option value="${h}">${String(h).padStart(2, "0")}:00</option>`).join("");
+async function renderSchedule() {
+  const c = await api("schedule");
+  $("#schEnabled").checked = c.enabled; $("#schFreq").value = c.frequency; $("#schHour").value = c.hour;
+  $("#schJunk").checked = c.junk; $("#schPurge").value = String(c.purge_days);
+  const last = c.last_run;
+  $("#schStatus").innerHTML = (!c.supported ? `<div class="info">Dọn dẹp theo lịch dành cho Windows và macOS.</div>` : "") +
+    `<p>${c.enabled ? (c.registered ? "✅ Lịch đang bật và đã được đăng ký với hệ điều hành." : "⚠️ Lịch đang bật nhưng chưa đăng ký được với hệ điều hành. Hãy bấm Lưu lịch lần nữa.") : "Lịch đang tắt."}</p>` +
+    (last ? `<p class="muted">Lần chạy gần nhất: ${fmtDate(last.ts)} · dọn ${num(last.junk_moved)} file rác (${fmt(last.junk_bytes)})${last.purged_bytes ? ` · xóa hẳn ${fmt(last.purged_bytes)} trong khu cách ly` : ""}.</p>` : `<p class="muted">Chưa chạy lần nào.</p>`) +
+    `<p class="muted">Khu cách ly đang giữ ${fmt(c.pending_bytes)}.</p>`;
+}
+$("#schSave").onclick = async () => {
+  try {
+    await api("schedule", { enabled: $("#schEnabled").checked, frequency: $("#schFreq").value, hour: +$("#schHour").value, junk: $("#schJunk").checked, purge_days: +$("#schPurge").value });
+    toast($("#schEnabled").checked ? "Đã lưu và bật lịch dọn dẹp." : "Đã tắt lịch dọn dẹp."); renderSchedule();
+  } catch (e) { toast(e.message, { err: true }); }
+};
+$("#schRunNow").onclick = async () => {
+  if (!(await dialog("Chạy dọn dẹp tự động ngay?", "<p>Ứng dụng sẽ làm đúng những gì lịch sẽ làm: dọn các mục rác hệ thống <b>an toàn</b> vào khu cách ly" + (+$("#schPurge").value ? ", và xóa hẳn file đã nằm trong khu cách ly quá số ngày đã chọn" : "") + ".</p>", "Chạy ngay"))) return;
+  try { const r = await api("schedule-run", {}); toast(`Đã dọn ${num(r.junk_moved)} file rác (${fmt(r.junk_bytes)}).`); refreshBadge(); renderSchedule(); } catch (e) { toast(e.message, { err: true }); }
+};
 
 window.addEventListener("resize", () => { if (state.view === "usage") renderUsage(); });
 (async () => { await loadScans().catch((e) => toast(e.message, { err: true })); refreshBadge(); render("home"); pollJob(); })();

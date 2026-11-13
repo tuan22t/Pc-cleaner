@@ -143,6 +143,16 @@ class OrganizerTest(Base):
         self.assertEqual(back["restored"], 3)
         self.assertTrue((d / "a.jpg").exists() and (d / "b.pdf").exists() and (d / "c.zip").exists())
         self.assertFalse((d / "Ảnh").exists())  # empty folder removed again
+        self.assertTrue((d / "Tài liệu").exists())  # folder that existed before stays
+
+    def test_undo_removes_year_folders(self):
+        d = self.root / "Desk"
+        d.mkdir()
+        (d / "p.jpg").write_bytes(b"1")
+        r = organizer.apply(str(d), [str(d / "p.jpg")], by_year=True)
+        self.assertEqual(r["moved"], 1)
+        quarantine.restore(r["batch_id"])
+        self.assertEqual(sorted(os.listdir(d)), ["p.jpg"])
 
     def test_protected_folder_refused(self):
         sysdir = os.environ.get("SystemRoot", r"C:\Windows") if paths.IS_WINDOWS else "/usr/bin"

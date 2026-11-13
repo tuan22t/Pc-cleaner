@@ -62,7 +62,7 @@ def hamming(a: int, b: int) -> int:
 def find_similar(
     scan_id: int,
     threshold: int = DEFAULT_THRESHOLD,
-    min_size: int = 20 * 1024,
+    min_size: int = 8 * 1024,
     progress: SimProgress | None = None,
     cancel: threading.Event | None = None,
     on_progress: Callable[[SimProgress], None] | None = None,

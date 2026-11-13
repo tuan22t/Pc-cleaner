@@ -20,15 +20,16 @@
       <a href="#" data-view="large" data-needs-scan><span class="ni">🐘</span>File lớn nhất</a>
       <a href="#" data-view="old" data-needs-scan><span class="ni">🕰️</span>File cũ lâu không dùng</a>
       <a href="#" data-view="dups" data-needs-scan><span class="ni">👯</span>File trùng lặp</a>
+      <a href="#" data-view="similar" data-needs-scan><span class="ni">🖼️</span>Ảnh gần giống nhau</a>
       <a href="#" data-view="types" data-needs-scan><span class="ni">🗂️</span>Theo loại file</a>
       <p id="navHint" class="nav-hint">Hãy quét một ổ đĩa hoặc thư mục ở trang Tổng quan để mở các báo cáo này.</p>
+      <div class="nav-sep">Dọn dẹp hệ thống</div>
+      <a href="#" data-view="junk"><span class="ni">🗑️</span>Rác hệ thống</a>
+      <a href="#" data-view="startup"><span class="ni">🚀</span>Khởi động cùng máy</a>
+      <a href="#" data-view="organize"><span class="ni">📦</span>Sắp xếp thư mục</a>
+      <a href="#" data-view="schedule"><span class="ni">⏰</span>Dọn dẹp theo lịch</a>
       <div class="nav-sep">An toàn</div>
       <a href="#" data-view="quarantine"><span class="ni">🛟</span>Khu cách ly &amp; hoàn tác <span id="qBadge" class="badge hidden"></span></a>
-      <div class="nav-sep">Sắp có</div>
-      <a class="soon">Rác hệ thống</a>
-      <a class="soon">Chương trình khởi động</a>
-      <a class="soon">Sắp xếp thư mục</a>
-      <a class="soon">Dọn dẹp theo lịch</a>
     </nav>
     <div class="scan-pick">
       <label for="scanSelect">Đang xem kết quả quét</label>
@@ -121,6 +122,91 @@
       <div id="dupList"></div>
     </section>
 
+    <section id="view-similar" class="view">
+      <h1>Ảnh gần giống nhau</h1>
+      <p class="muted">Tìm những ảnh trông giống nhau dù khác file: ảnh chụp liên tiếp, ảnh đã thu nhỏ, nén lại hoặc chỉnh sáng nhẹ. Mỗi nhóm luôn giữ lại ít nhất một ảnh.</p>
+      <div class="toolbar">
+        <label>Độ giống <select id="simThreshold">
+          <option value="3">Rất giống (gần như y hệt)</option><option value="6" selected>Giống (khuyên dùng)</option><option value="7">Hơi giống</option>
+        </select></label>
+        <button id="simRun" class="btn primary">🔍 Tìm ảnh giống nhau</button>
+      </div>
+      <div id="simSummary" class="summary"></div>
+      <div id="simList"></div>
+    </section>
+
+    <section id="view-junk" class="view">
+      <h1>Rác hệ thống</h1>
+      <p class="muted">File tạm, bộ nhớ đệm, báo cáo lỗi, bản cập nhật đã cài… do Windows/macOS và các ứng dụng để lại. Chúng sẽ tự được tạo lại khi cần, xóa đi không mất tài liệu hay cài đặt.</p>
+      <div class="toolbar"><button id="junkRun" class="btn primary">🔍 Kiểm tra rác hệ thống</button><span id="junkInfo" class="muted"></span></div>
+      <div id="junkList" class="list"></div>
+      <div id="junkBar" class="actionbar hidden">
+        <span id="junkSel"></span><span class="spacer"></span>
+        <button id="junkClean" class="btn warn">🧹 Dọn rác đã chọn</button>
+      </div>
+    </section>
+
+    <section id="view-startup" class="view">
+      <h1>Khởi động cùng máy</h1>
+      <p class="muted">Các chương trình tự mở khi bật máy hoặc chạy ngầm làm máy khởi động chậm. Ứng dụng <b>chỉ tắt</b> chúng (không gỡ cài đặt), và bật lại được bằng một chạm.</p>
+      <div id="startupNote"></div>
+      <div class="toolbar">
+        <div class="chips" id="startupFilter">
+          <button class="chip active" data-f="all">Tất cả</button>
+          <button class="chip" data-f="safe">Có thể tắt</button>
+          <button class="chip" data-f="unknown">Chưa rõ</button>
+          <button class="chip" data-f="keep">Nên giữ</button>
+          <button class="chip" data-f="off">Đã tắt</button>
+        </div>
+        <span class="spacer"></span>
+        <button id="startupReload" class="btn ghost small">↻ Tải lại</button>
+      </div>
+      <div id="startupList" class="list"></div>
+    </section>
+
+    <section id="view-organize" class="view">
+      <h1>Sắp xếp thư mục</h1>
+      <p class="muted">Gom các file đang nằm lộn xộn trong một thư mục (ví dụ Downloads, Desktop) vào các thư mục con theo loại: Ảnh, Video, Tài liệu… Anh/chị được <b>xem trước</b> mọi thay đổi, và có thể hoàn tác.</p>
+      <div class="toolbar">
+        <span id="orgQuick"></span>
+        <button id="orgPick" class="btn hidden">📁 Chọn thư mục…</button>
+      </div>
+      <div class="custom-scan">
+        <input id="orgPath" placeholder="Đường dẫn thư mục cần sắp xếp">
+        <label class="selall"><input type="checkbox" id="orgByYear" checked> Chia ảnh và video theo năm</label>
+        <button id="orgPreview" class="btn primary">Xem trước</button>
+      </div>
+      <div id="orgSummary" class="summary"></div>
+      <div id="orgList" class="list hidden"></div>
+      <div id="orgBar" class="actionbar hidden">
+        <span id="orgSel"></span><span class="spacer"></span>
+        <button id="orgApply" class="btn primary">📦 Sắp xếp</button>
+      </div>
+    </section>
+
+    <section id="view-schedule" class="view">
+      <h1>Dọn dẹp theo lịch</h1>
+      <p class="muted">Máy tự dọn rác hệ thống định kỳ, kể cả khi anh/chị không mở ứng dụng. Chỉ dọn những mục được đánh dấu “An toàn”; file vẫn vào khu cách ly trước.</p>
+      <div class="card form">
+        <label class="switch-row"><input type="checkbox" id="schEnabled"> <b>Bật dọn dẹp tự động</b></label>
+        <div class="form-grid">
+          <label>Tần suất</label>
+          <select id="schFreq"><option value="daily">Mỗi ngày</option><option value="weekly">Mỗi tuần (Chủ nhật)</option><option value="monthly">Mỗi tháng (ngày 1)</option></select>
+          <label>Giờ chạy</label>
+          <select id="schHour"></select>
+          <label>Việc cần làm</label>
+          <label class="selall"><input type="checkbox" id="schJunk" checked> Dọn rác hệ thống (mục an toàn)</label>
+          <label>Xóa hẳn khu cách ly</label>
+          <select id="schPurge"><option value="0">Không bao giờ tự xóa</option><option value="7">File đã cách ly quá 7 ngày</option><option value="30">File đã cách ly quá 30 ngày</option><option value="90">File đã cách ly quá 90 ngày</option></select>
+        </div>
+        <div class="form-actions">
+          <button id="schSave" class="btn primary">Lưu lịch</button>
+          <button id="schRunNow" class="btn ghost">Chạy thử ngay</button>
+        </div>
+      </div>
+      <div id="schStatus" class="summary"></div>
+    </section>
+
     <section id="view-quarantine" class="view">
       <h1>Khu cách ly &amp; hoàn tác</h1>
       <div class="info">
@@ -147,7 +233,7 @@
 <div id="toast" class="toast hidden"><span id="toastMsg"></span><button id="toastAct" class="btn small hidden"></button></div>
 <div id="modal" class="modal hidden"><div class="modal-box">
   <h3 id="modalTitle"></h3><div id="modalBody"></div>
-  <div class="modal-actions"><button id="modalCancel" class="btn ghost">Hủy</button><button id="modalOk" class="btn warn">Đồng ý</button></div>
+  <div class="modal-actions"><button id="modalCancel" class="btn ghost">Hủy</button><button id="modalAlt" class="btn ghost hidden"></button><button id="modalOk" class="btn warn">Đồng ý</button></div>
 </div></div>
 <script src="app.js"></script>
 </body>

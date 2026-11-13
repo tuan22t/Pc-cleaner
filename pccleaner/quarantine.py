@@ -106,7 +106,13 @@ def move_files(moves: list[tuple[str, str]], reason: str = "") -> dict:
                 raise FileNotFoundError("Không phải file thường hoặc không còn tồn tại")
             if os.path.exists(dst):
                 raise FileExistsError("Đã có file cùng tên ở nơi đến")
+            missing, d = [], os.path.dirname(dst)
+            while not os.path.exists(d):
+                missing.append(d)
+                d = os.path.dirname(d)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
+            for created in reversed(missing):  # remembered so undo can remove them again
+                _log(conn, batch_id, "mkdir", created, None, 0, reason)
             size = os.path.getsize(src)
             shutil.move(src, dst)
             _log(conn, batch_id, "move", src, dst, size, reason)
@@ -133,16 +139,17 @@ def restore(batch_id: str) -> dict:
                 raise FileExistsError("Đã có file khác ở vị trí cũ")
             os.makedirs(os.path.dirname(r["path"]), exist_ok=True)
             shutil.move(r["stored_at"], r["path"])
-            if r["kind"] == "move":
-                try:  # remove the folder the organizer created, if it is now empty
-                    os.rmdir(os.path.dirname(r["stored_at"]))
-                except OSError:
-                    pass
             conn.execute("UPDATE actions SET restored=1 WHERE id=?", (r["id"],))
             _log(conn, batch_id, "restore", r["path"], r["stored_at"], r["size"])
             ok += 1
         except Exception as e:  # noqa: BLE001
             failed.append({"path": r["path"], "error": str(e)})
+    # Remove folders the organizer created, deepest first, if they are empty again.
+    for r in conn.execute("SELECT path FROM actions WHERE batch_id=? AND kind='mkdir' ORDER BY id DESC", (batch_id,)):
+        try:
+            os.rmdir(r["path"])
+        except OSError:
+            pass
     conn.commit()
     _cleanup_empty(paths.quarantine_dir() / batch_id)
     return {"restored": ok, "failed": failed}
@@ -162,7 +169,7 @@ def batches() -> list[dict]:
 
 
 def log(limit: int = 500) -> list[dict]:
-    rows = db.connect().execute("SELECT * FROM actions ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    rows = db.connect().execute("SELECT * FROM actions WHERE kind != 'mkdir' ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     return [dict(r) for r in rows]
 
 
