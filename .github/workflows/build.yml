@@ -3,6 +3,7 @@ name: build
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -147,3 +148,52 @@ jobs:
       - run: python tools/installer_e2e.py mac dist/PCCleaner-${{ needs.mac-dmg.outputs.version }}.dmg
       - name: What Gatekeeper says (accepted only once signed and notarized)
         run: spctl --assess --type open --context context:primary-signature -v dist/*.dmg || true
+
+  # A tag such as v0.6.1 (or v0.7.0-beta.1) publishes the checked packages and the
+  # signed update announcement to the public releases repository (docs/phat-hanh.md).
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows-installer, windows-installer-check, mac-dmg, mac-dmg-check]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+      UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+      REPO: ${{ vars.RELEASES_REPO }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: The tag must match the app's version
+        run: |
+          V="$(python -c 'import pccleaner; print(pccleaner.__version__)')"
+          [ "${GITHUB_REF_NAME}" = "v$V" ] || { echo "tag ${GITHUB_REF_NAME} but the app says $V"; exit 1; }
+          grep -q "^## $V" CHANGELOG.md || { echo "CHANGELOG.md has no section for $V"; exit 1; }
+          echo "V=$V" >> "$GITHUB_ENV"
+          case "$V" in *-beta.*) echo "CHANNEL=beta" >> "$GITHUB_ENV";; *) echo "CHANNEL=stable" >> "$GITHUB_ENV";; esac
+      - uses: actions/download-artifact@v4
+        with:
+          name: PCCleaner-Setup-${{ env.V }}
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: PCCleaner-${{ env.V }}-mac
+          path: dist
+      - name: Publish the packages
+        run: |
+          awk -v v="## $V" 'index($0,v)==1{f=1;next} /^## /{f=0} f' CHANGELOG.md > notes.md
+          pre=""; [ "$CHANNEL" = beta ] && pre="--prerelease"
+          gh release create "v$V" dist/PCCleaner-Setup-$V.exe dist/PCCleaner-$V.dmg \
+            --repo "$REPO" --title "PC Cleaner $V" --notes-file notes.md $pre
+      - name: Sign and publish the update announcement
+        run: |
+          BASE="https://github.com/$REPO/releases/download/v$V"
+          channels="$CHANNEL"; [ "$CHANNEL" = stable ] && channels="stable beta"
+          for c in $channels; do
+            python tools/sign_update.py --channel "$c" --version "$V" \
+              --windows "dist/PCCleaner-Setup-$V.exe" --mac "dist/PCCleaner-$V.dmg" \
+              --base-url "$BASE" --notes-vi "$(cat notes.md)" -o "dist/$c.json"
+          done
+          gh release view updates --repo "$REPO" >/dev/null 2>&1 || \
+            gh release create updates --repo "$REPO" --title "Update announcements" --notes "Read by the app. Do not delete." --latest=false
+          for c in $channels; do gh release upload updates "dist/$c.json" --repo "$REPO" --clobber; done
