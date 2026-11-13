@@ -102,7 +102,7 @@ const cssVar = (v) => getComputedStyle(document.documentElement).getPropertyValu
 async function renderHome() {
   const info = state.info = await api("info");
   const dash = state.dash = await api("dashboard");
-  renderDashboard(dash);
+  renderDashboard(dash); renderPromoCard();
   $("#pickFolderBtn").classList.toggle("hidden", !info.can_pick_folder);
   $("#locations").innerHTML = info.locations.map((l, i) => {
     const pct = l.total ? (l.used / l.total) * 100 : 0;
@@ -201,7 +201,7 @@ function applyAppName() {
 async function setLanguage(lang) {
   const s = await api("settings", { lang });
   state.info.settings = s;
-  await loadLang(s.lang); applyAppName();
+  await loadLang(s.lang); applyAppName(); renderSponsorLink();
   $("#toast").classList.add("hidden"); // a message still showing is in the old language
   $("#setLang").value = s.lang;
   render(state.view); refreshBadge();
@@ -211,8 +211,50 @@ function renderSettings() {
   $("#setLang").value = s.lang; $("#setTheme").value = s.theme;
   $("#aboutInfo").innerHTML = t("Phiên bản {0} · Thư mục dữ liệu: {1}", esc(state.info.version), esc(state.info.data_dir));
   $("#macUninstall").classList.toggle("hidden", state.info.platform !== "mac");
-  renderUpdate();
+  renderUpdate(); renderPromoList();
 }
+
+// ---------- sponsors: shown quietly, links open only on click ----------
+const PROMO_BTN = { website: () => "🌐 " + t("Website"), maps: () => "📍 " + t("Chỉ đường"), facebook: () => "💬 " + t("Fanpage") };
+async function loadPromo() {
+  if (!state.promo) {
+    try { state.promo = await api("promo"); } catch (e) { state.promo = { places: [] }; }
+    state.promoIdx = Math.floor(Math.random() * Math.max(1, state.promo.places.length));
+  }
+  return state.promo;
+}
+const promoText = (o) => (o && (o[I18N.lang] || o.vi)) || "";
+function promoPlace(p, compact) {
+  const img = p.image ? `<img class="promo-img" src="${esc(p.image)}" alt="">`
+    : `<div class="promo-img promo-ph" aria-hidden="true">${esc(p.icon || "🏨")}</div>`;
+  const btns = p.links.map((k) => `<button class="btn ${compact ? "small " : ""}ghost" data-promo="${esc(p.id)}" data-kind="${k}">${esc(PROMO_BTN[k]())}</button>`).join("");
+  return `${img}<div class="promo-body"><h3 translate="no">${esc(p.name)}</h3><p>${esc(promoText(p.tagline))}</p>
+    <p class="muted small" translate="no">${esc(p.address)}${p.phone ? " · ☎ " + esc(p.phone) : ""}</p><div class="promo-actions">${btns}</div></div>`;
+}
+async function renderPromoCard() {
+  const d = await loadPromo(); const box = $("#promoCard");
+  if (!d.places.length) { box.classList.add("hidden"); return; }
+  const i = state.promoIdx % d.places.length;
+  const dots = d.places.map((_p, k) => `<button class="promo-dot ${k === i ? "on" : ""}" data-promo-dot="${k}" aria-label="${k + 1}"></button>`).join("");
+  box.innerHTML = `<div class="promo-kicker">${esc(t("Phần mềm miễn phí nhờ sự đồng hành của"))}</div><div class="promo-row">${promoPlace(d.places[i])}</div><div class="promo-dots">${dots}</div>`;
+  box.classList.remove("hidden");
+  box.querySelectorAll("[data-promo-dot]").forEach((b) => b.onclick = () => { state.promoIdx = +b.dataset.promoDot; renderPromoCard(); });
+}
+async function renderPromoList() {
+  const d = await loadPromo();
+  $("#promoList").innerHTML = d.places.map((p) => `<div class="card promo-row compact">${promoPlace(p, true)}</div>`).join("");
+}
+async function renderSponsorLink() {
+  const d = await loadPromo(); const a = $("#navSponsor");
+  if (!d.places.length) return;
+  a.innerHTML = esc(t("Miễn phí · Đồng hành: {0}", "\u0000")).replace("\u0000", `<span translate="no">${esc(promoText(d.sponsor))}</span>`);
+  a.classList.remove("hidden");
+  a.onclick = (e) => { e.preventDefault(); show("settings"); setTimeout(() => $("#promoList").scrollIntoView({ block: "start" }), 50); };
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-promo]"); if (!b) return;
+  api("open-link", { id: b.dataset.promo, kind: b.dataset.kind }).catch((er) => toast(er.message, { err: true }));
+});
 
 // ---------- updates: nothing is downloaded or installed without the user's click ----------
 async function renderUpdate() {
@@ -786,7 +828,7 @@ window.addEventListener("resize", () => { if (state.view === "usage") renderUsag
     applyTheme(state.info.settings.theme);
     await loadLang(state.info.settings.lang);
   } catch (e) { await loadLang("vi"); toast(e.message, { err: true }); }
-  applyAppName();
+  applyAppName(); renderSponsorLink();
   await loadScans().catch((e) => toast(e.message, { err: true })); refreshBadge(); render("home"); pollJob();
   if (state.info && !state.info.settings.onboarded) openGuide();
   else api("update").then((u) => { if (u.available) toast(t("Đã có phiên bản mới {0}.", u.available.version), { action: t("Xem"), onAction: () => show("settings") }); }).catch(() => {});

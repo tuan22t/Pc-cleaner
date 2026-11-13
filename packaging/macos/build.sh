@@ -28,6 +28,8 @@ done
 "$BUILD/venv/bin/delocate-merge" "$BUILD"/wheels/macosx_11_0_arm64/*.whl "$BUILD"/wheels/macosx_10_13_x86_64/*.whl -w "$BUILD/wheels/universal2"
 "$VPY" -m pip install -q --force-reinstall --no-deps "$BUILD"/wheels/universal2/*.whl
 
+"$VPY" tools/fetch_promo_images.py
+
 "$VPY" -m PyInstaller --noconfirm --windowed --target-arch universal2 --name PCCleaner \
   --osx-bundle-identifier com.pccleaner.app --collect-submodules pccleaner \
   --add-data "pccleaner/web:pccleaner/web" run.py

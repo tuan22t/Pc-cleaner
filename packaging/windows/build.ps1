@@ -10,6 +10,7 @@ $root = Resolve-Path "$PSScriptRoot\..\.."
 Set-Location $root
 
 python -m pip install -q -r requirements-build.txt
+python tools\fetch_promo_images.py
 if (Test-Path dist\PCCleaner) { Remove-Item -Recurse -Force dist\PCCleaner }
 python -m PyInstaller --noconfirm --windowed --name PCCleaner --collect-submodules pccleaner --add-data "pccleaner/web;pccleaner/web" run.py
 if ($LASTEXITCODE) { throw "PyInstaller failed" }

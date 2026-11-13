@@ -231,3 +231,25 @@ nav a.nav-bottom { margin-top: auto; }
 .guide-dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
 .guide-dots span.on { background: var(--accent); }
 @media (max-width: 1100px) { .dash-charts { grid-template-columns: 1fr; } }
+
+/* Sponsors: quiet, never in the way of the work. */
+.promo { margin-top: 16px; padding: 12px 14px; }
+.promo-kicker { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.promo-row { display: flex; gap: 14px; align-items: center; }
+.promo-img { width: 168px; height: 88px; object-fit: cover; border-radius: 8px; flex: none; background: var(--accent-weak); }
+.promo-ph { display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 26px; color: var(--accent);
+  background: linear-gradient(135deg, var(--accent-weak), var(--panel)); }
+.promo-body { min-width: 0; }
+.promo-body h3 { margin: 0; font-size: 15px; }
+.promo-body p { margin: 2px 0; }
+.promo-body .small { font-size: 12px; }
+.promo-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.card .promo-actions .btn { width: auto; margin-top: 0; }
+.promo-dots { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
+.promo-dot { width: 8px; height: 8px; border-radius: 50%; border: 0; padding: 0; background: var(--line); cursor: pointer; }
+.promo-dot.on { background: var(--accent); }
+.promo-list { display: grid; gap: 10px; max-width: 760px; }
+.promo-row.compact .promo-img { width: 120px; height: 63px; }
+.nav-sponsor { font-size: 11px; color: var(--side-text); opacity: .65; padding: 6px 10px; text-decoration: none; line-height: 1.4; }
+.nav-sponsor:hover { opacity: 1; }
+@media (max-width: 720px) { .promo-row { flex-direction: column; align-items: flex-start; } .promo-img { width: 100%; height: auto; aspect-ratio: 40 / 21; } }

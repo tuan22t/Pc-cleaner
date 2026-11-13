@@ -122,7 +122,11 @@ class UiTest(unittest.TestCase):
 
     def visible_text(self):
         return self.page.evaluate("""() => {
-            const parts = [document.querySelector('.sidebar').innerText, document.querySelector('main').innerText];
+            // Proper names (the sponsors' names and addresses) are marked translate="no".
+            const text = (sel) => { const c = document.querySelector(sel).cloneNode(true);
+                c.querySelectorAll('[translate="no"]').forEach((e) => e.remove());
+                document.body.appendChild(c); const s = c.innerText; c.remove(); return s; };
+            const parts = [text('.sidebar'), text('main')];
             for (const id of ['modal', 'guide', 'toast'])
                 if (!document.getElementById(id).classList.contains('hidden')) parts.push(document.getElementById(id).innerText);
             for (const el of document.querySelectorAll('[title], [placeholder]'))
@@ -188,6 +192,13 @@ class UiTest(unittest.TestCase):
         self.assertTrue(os.path.exists(target))
 
     def test_6_screens_in_vietnamese(self):
+        self.go("home")
+        self.page.wait_for_selector("#promoCard:not(.hidden) [data-promo]")
+        self.assertIn("đồng hành", self.page.inner_text("#promoCard"))
+        self.assertIn("Đồng hành", self.page.inner_text("#navSponsor"))
+        self.go("settings")
+        self.page.wait_for_selector("#promoList [data-promo]")
+        self.assertEqual(self.page.locator("#promoList .promo-row").count(), 4)
         for v in VIEWS:
             self.go(v)
             self.shot(f"vi-{VIEWS.index(v) + 1:02d}-{v}")
