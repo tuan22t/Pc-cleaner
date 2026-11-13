@@ -1,2 +1,4 @@
 # Cửa sổ ứng dụng riêng (không bắt buộc: thiếu thì ứng dụng mở trong trình duyệt)
 pywebview>=5.0
+# Đọc ảnh để tìm ảnh gần giống nhau
+Pillow>=10.0

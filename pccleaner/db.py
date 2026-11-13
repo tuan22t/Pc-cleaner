@@ -69,6 +69,38 @@ CREATE TABLE IF NOT EXISTS actions (
     restored INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS actions_batch ON actions(batch_id);
+CREATE TABLE IF NOT EXISTS similar_groups (
+    scan_id INTEGER NOT NULL,
+    group_id INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    mtime REAL NOT NULL,
+    width INTEGER,
+    height INTEGER,
+    distance INTEGER
+);
+CREATE INDEX IF NOT EXISTS similar_scan ON similar_groups(scan_id, group_id);
+CREATE TABLE IF NOT EXISTS image_hashes (
+    path TEXT PRIMARY KEY,
+    size INTEGER NOT NULL,
+    mtime REAL NOT NULL,
+    dhash TEXT,
+    width INTEGER,
+    height INTEGER
+);
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+CREATE TABLE IF NOT EXISTS startup_changes (
+    id INTEGER PRIMARY KEY,
+    ts REAL NOT NULL,
+    item_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    original TEXT,              -- JSON describing how to restore it
+    active INTEGER DEFAULT 1    -- 1 = currently disabled by us
+);
 """
 
 _local = threading.local()
@@ -100,3 +132,14 @@ def reset_for_tests(path: Path) -> None:
     global _db_path
     _db_path = path
     _local.conn = None
+
+
+def get_setting(key: str, default=None):
+    r = connect().execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return r["value"] if r else default
+
+
+def set_setting(key: str, value) -> None:
+    conn = connect()
+    conn.execute("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
+    conn.commit()

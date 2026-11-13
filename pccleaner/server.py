@@ -14,11 +14,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import __version__, duplicates, paths, quarantine, scanner
+from . import __version__, duplicates, junk, organizer, paths, quarantine, scanner, scheduler, similar, startup
 
 WEB_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).parent.parent)) / "pccleaner" / "web"
 if not WEB_DIR.is_dir():
     WEB_DIR = Path(__file__).parent / "web"
+
+
+def _log_exc() -> None:
+    """Write the current exception to app.log (packaged apps have no console)."""
+    try:
+        with open(paths.data_dir() / "app.log", "a", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + traceback.format_exc() + "\n")
+    except OSError:
+        pass
 
 
 class JobManager:
@@ -47,7 +56,7 @@ class JobManager:
                 except (scanner.Cancelled, InterruptedError):
                     self.state.update(state="cancelled", finished=time.time())
                 except Exception as e:  # noqa: BLE001
-                    traceback.print_exc()
+                    _log_exc()
                     self.state.update(state="error", error=str(e), finished=time.time())
 
             self.thread = threading.Thread(target=run, daemon=True)
@@ -116,6 +125,8 @@ def make_handler(token: str):
         # ---- routing ----
         def do_GET(self):
             u = urlparse(self.path)
+            if u.path == "/api/thumb":
+                return self._thumb(parse_qs(u.query))
             if not u.path.startswith("/api/"):
                 return self._static(u.path)
             self._api("GET", u.path, {k: v[0] for k, v in parse_qs(u.query).items()}, {})
@@ -139,6 +150,16 @@ def make_handler(token: str):
                 ctype += "; charset=utf-8"
             self._send(200, target.read_bytes(), ctype)
 
+        def _thumb(self, q: dict):
+            # <img> tags cannot send headers, so the token comes in the query string.
+            if not secrets.compare_digest((q.get("t") or [""])[0], token):
+                return self._send(401, b"unauthorized", "text/plain")
+            try:
+                data = similar.thumbnail((q.get("path") or [""])[0])
+            except Exception:  # noqa: BLE001
+                return self._send(404, b"not found", "text/plain")
+            self._send(200, data, "image/jpeg")
+
         def _api(self, method: str, path: str, q: dict, body: dict):
             if not self._authorized():
                 return self._json({"error": "unauthorized"}, 401)
@@ -149,7 +170,7 @@ def make_handler(token: str):
             except (RuntimeError, ValueError, FileNotFoundError, PermissionError) as e:
                 return self._json({"error": str(e)}, 400)
             except Exception as e:  # noqa: BLE001
-                traceback.print_exc()
+                _log_exc()
                 return self._json({"error": str(e)}, 500)
             self._json(result)
 
@@ -200,12 +221,50 @@ def route(method: str, path: str, q: dict, body: dict):
             return scanner.old_files(sid, int(q.get("days", 365)), int(q.get("min", 50 * 2**20)))
         if sub == "duplicates":
             return duplicates.get_groups(sid)
+        if sub == "similar":
+            return similar.get_groups(sid)
     if key == ("POST", "duplicates"):
         sid = int(body["scan_id"])
         min_size = int(body.get("min_size", 2**20))
         progress = duplicates.DupProgress()
         jobs.start("duplicates", lambda c, u: duplicates.find_duplicates(sid, min_size, progress, c, u), scan_id=sid)
         return {"ok": True}
+    if key == ("POST", "similar"):
+        sid = int(body["scan_id"])
+        thr = int(body.get("threshold", similar.DEFAULT_THRESHOLD))
+        progress = similar.SimProgress()
+        jobs.start("similar", lambda c, u: similar.find_similar(sid, thr, progress=progress, cancel=c, on_progress=u), scan_id=sid)
+        return {"ok": True}
+    if key == ("POST", "junk-scan"):
+        jobs.start("junk", lambda c, u: junk.scan(c, u))
+        return {"ok": True}
+    if key == ("POST", "junk-clean"):
+        ids = body.get("ids") or []
+        if not ids:
+            raise ValueError("Chưa chọn mục nào")
+        return junk.clean([str(i) for i in ids])
+    if key == ("GET", "startup"):
+        return {"items": startup.list_items(), "admin": startup.is_admin(),
+                "last_restore_point": scheduler.db.get_setting("last_restore_point")}
+    if key == ("POST", "startup-set"):
+        return startup.set_enabled(str(body["id"]), bool(body["enable"]))
+    if key == ("POST", "restore-point"):
+        return startup.create_restore_point()
+    if key == ("GET", "startup-history"):
+        return startup.history()
+    if key == ("POST", "organize-preview"):
+        return organizer.preview(str(body.get("folder") or ""), bool(body.get("by_year", True)))
+    if key == ("POST", "organize-apply"):
+        return organizer.apply(str(body.get("folder") or ""), [str(p) for p in body.get("chosen") or []], bool(body.get("by_year", True)))
+    if key == ("GET", "schedule"):
+        cfg = scheduler.get()
+        cfg["registered"] = scheduler.is_registered()
+        cfg["pending_bytes"] = quarantine.pending_bytes()
+        return cfg
+    if key == ("POST", "schedule"):
+        return scheduler.save(body)
+    if key == ("POST", "schedule-run"):
+        return scheduler.run_auto_clean()
     if key == ("POST", "quarantine"):
         files = body.get("paths") or []
         if not isinstance(files, list) or not files:
@@ -215,6 +274,8 @@ def route(method: str, path: str, q: dict, body: dict):
         if body.get("dup_scan_id") is not None:
             # Duplicates are re-verified on disk right before anything moves.
             files, refused = duplicates.check_removal(int(body["dup_scan_id"]), files)
+        elif body.get("similar_scan_id") is not None:
+            files, refused = similar.check_removal(int(body["similar_scan_id"]), files)
         return quarantine.quarantine(files, str(body.get("reason", "")), refused)
     if key == ("GET", "batches"):
         return quarantine.batches()
