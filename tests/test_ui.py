@@ -9,6 +9,7 @@ PCCLEANER_SCREENSHOTS=<folder> also saves a screenshot of each screen in both
 languages (used for the phase report).
 """
 import glob
+import json
 import os
 import re
 import shutil
@@ -166,7 +167,7 @@ class UiTest(unittest.TestCase):
         self.page.select_option("#largeMin", "0")
         self.page.wait_for_selector('#largeList input[data-sel="large"]')
         target = str(self.root / "Docs" / "report.pdf")
-        self.page.check(f'#largeList input[value="{target}"]')
+        self.page.check(f"#largeList input[value={json.dumps(target)}]")  # CSS string: Windows backslashes escaped
         self.page.click("#selClean")
         self.page.wait_for_selector("#modal:not(.hidden)")
         self.assertIn("Khu cách ly", self.page.inner_text("#modal"))
