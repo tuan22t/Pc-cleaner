@@ -328,7 +328,8 @@ class LongPathTest(Base):
             self.assertTrue(paths.lp(long_path).startswith("\\\\?\\C:\\"))
             self.assertTrue(paths.lp("\\\\server\\share\\" + "d\\" * 130).startswith("\\\\?\\UNC\\server"))
             self.assertEqual(paths.lp("C:\\short.txt"), "C:\\short.txt")
-        self.assertEqual(paths.lp("/x" * 200), "/x" * 200)  # unchanged elsewhere
+        with mock.patch.object(paths, "IS_WINDOWS", False):
+            self.assertEqual(paths.lp("/x" * 200), "/x" * 200)  # unchanged elsewhere
 
     @unittest.skipUnless(paths.IS_WINDOWS, "Windows only")
     def test_quarantine_and_restore_deep_file(self):
