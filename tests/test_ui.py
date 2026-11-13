@@ -144,6 +144,11 @@ class UiTest(unittest.TestCase):
         self.assertIn("Bắt đầu", self.page.inner_text("#guideNext"))
         self.page.click("#guideNext")
         self.page.wait_for_selector("#guide.hidden", state="attached")
+        # The guide closes first and saves "seen" right after: wait for the save.
+        for _ in range(100):
+            if server._settings()["onboarded"]:
+                break
+            self.page.wait_for_timeout(100)
         self.assertTrue(server._settings()["onboarded"])
 
     def test_2_dashboard(self):
