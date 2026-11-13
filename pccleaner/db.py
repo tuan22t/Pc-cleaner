@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+import time
 from pathlib import Path
 
 from . import APP_NAME, paths
@@ -188,6 +189,19 @@ def _migrate(conn: sqlite3.Connection) -> None:
         raise
 
 
+def _wal(conn: sqlite3.Connection) -> None:
+    """Switch to WAL. On a brand-new file, SQLite refuses this at once ("database is
+    locked", without waiting) while another connection is setting it up: retry."""
+    for attempt in range(100):
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            return
+        except sqlite3.OperationalError:
+            if attempt == 99:
+                raise
+            time.sleep(0.05)
+
+
 def connect() -> sqlite3.Connection:
     """One connection per thread; WAL lets the UI read while a scan writes.
 
@@ -198,7 +212,7 @@ def connect() -> sqlite3.Connection:
     if conn is None or getattr(_local, "path", None) != db_path():
         conn = sqlite3.connect(db_path(), timeout=30)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
+        _wal(conn)
         conn.execute("PRAGMA synchronous=FULL")
         _migrate(conn)
         _local.conn = conn
