@@ -26,8 +26,16 @@ class SimProgress:
     current: str = ""
 
 
+# Images above this many pixels are skipped: a crafted or corrupt file could
+# otherwise claim a huge size and use gigabytes of memory while decoding.
+# 150 megapixels covers the largest camera sensors sold today.
+MAX_PIXELS = 150_000_000
+
+
 def _open_image(path: str):
     from PIL import Image  # imported lazily: only this feature needs Pillow
+
+    Image.MAX_IMAGE_PIXELS = MAX_PIXELS  # Pillow's own guard, as a second line
 
     if path.lower().endswith((".heic", ".heif")):
         try:
@@ -36,7 +44,12 @@ def _open_image(path: str):
             pillow_heif.register_heif_opener()
         except ImportError:
             raise OSError("Cần cài pillow-heif để đọc ảnh HEIC")
-    return Image.open(path)
+    im = Image.open(path)  # reads only the header; pixels are decoded later
+    w, h = im.size
+    if w * h > MAX_PIXELS:
+        im.close()
+        raise OSError(f"Ảnh quá lớn ({w}×{h}), bỏ qua")
+    return im
 
 
 def dhash(path: str) -> tuple[int, int, int]:

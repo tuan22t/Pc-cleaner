@@ -36,6 +36,7 @@ def get() -> dict:
     last = db.get_setting("schedule_last_run")
     cfg["last_run"] = json.loads(last) if last else None
     cfg["supported"] = paths.IS_WINDOWS or paths.IS_MAC
+    cfg["health"] = health(cfg)
     return cfg
 
 
@@ -107,6 +108,78 @@ def is_registered() -> bool:
     if paths.IS_MAC:
         return _plist_path().exists()
     return False
+
+
+def _registered_command() -> str | None:
+    """The command line the operating system will run, or None if nothing is registered."""
+    if paths.IS_WINDOWS:
+        r = _run(["schtasks", "/Query", "/TN", TASK_NAME, "/XML"])
+        if r.returncode != 0:
+            return None
+        import re
+
+        cmd = re.search(r"<Command>(.*?)</Command>", r.stdout, re.S)
+        args = re.search(r"<Arguments>(.*?)</Arguments>", r.stdout, re.S)
+        if not cmd:
+            return None
+        import html
+
+        return (html.unescape(cmd.group(1)) + " " + html.unescape(args.group(1) if args else "")).strip()
+    if paths.IS_MAC:
+        try:
+            with open(_plist_path(), "rb") as f:
+                return subprocess.list2cmdline(plistlib.load(f).get("ProgramArguments") or [])
+        except (OSError, ValueError, plistlib.InvalidFileException):
+            return None
+    return None
+
+
+def _same_command(a: str, b: str) -> bool:
+    norm = (lambda x: x.replace('"', "").lower().split()) if paths.IS_WINDOWS else (lambda x: x.replace('"', "").split())
+    return norm(a) == norm(b)
+
+
+def _translocated() -> bool:
+    """macOS runs apps opened straight from a download at a random read-only
+    path that changes on every launch; a schedule pointing there would break."""
+    return paths.IS_MAC and "/AppTranslocation/" in sys.executable
+
+
+def health(cfg: dict | None = None) -> dict:
+    """Is the scheduled cleanup still pointing at this copy of the app?"""
+    cfg = cfg or {}
+    if not cfg.get("enabled") or not (paths.IS_WINDOWS or paths.IS_MAC):
+        return {"ok": True, "problem": None}
+    if _translocated():
+        return {"ok": False, "problem": "translocated",
+                "message": "Hãy kéo PC Cleaner vào thư mục Applications rồi mở lại, lịch dọn tự động mới chạy được."}
+    reg = _registered_command()
+    if reg is None:
+        return {"ok": False, "problem": "missing",
+                "message": "Lịch dọn tự động đã bị xóa khỏi hệ thống. Bấm Lưu để đăng ký lại."}
+    if not _same_command(reg, subprocess.list2cmdline(_command())):
+        return {"ok": False, "problem": "moved",
+                "message": "Ứng dụng đã được chuyển sang chỗ khác. Bấm Lưu để cập nhật lịch dọn tự động."}
+    return {"ok": True, "problem": None}
+
+
+def self_check() -> dict:
+    """At start-up: if the app was moved or reinstalled elsewhere, point the schedule at it again."""
+    raw = db.get_setting("schedule")
+    cfg = dict(DEFAULTS)
+    if raw:
+        try:
+            cfg.update(json.loads(raw))
+        except ValueError:
+            return {"ok": True, "problem": None}
+    h = health(cfg)
+    if h["problem"] in ("moved", "missing"):
+        try:
+            _register(cfg)
+            return {"ok": True, "problem": None, "fixed": h["problem"]}
+        except Exception as e:  # noqa: BLE001 - shown in the schedule screen instead
+            h["error"] = str(e)[:200]
+    return h
 
 
 def save(cfg_in: dict) -> dict:

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import threading
 import time
 import webbrowser
 
@@ -31,6 +32,17 @@ def _startup_recovery() -> None:
             _say(f"Đã phục hồi sau lần tắt đột ngột: {r}")
         scanner.cleanup_unfinished()
     except Exception:  # noqa: BLE001 - recovery must never stop the app from opening
+        server._log_exc()
+
+
+def _schedule_self_check() -> None:
+    from . import scheduler
+
+    try:
+        r = scheduler.self_check()
+        if r.get("fixed"):
+            _say("Đã cập nhật lịch dọn tự động theo vị trí mới của ứng dụng.")
+    except Exception:  # noqa: BLE001
         server._log_exc()
 
 
@@ -73,6 +85,7 @@ def main(argv: list[str] | None = None) -> int:
         _already_running()
         return 1
     _startup_recovery()
+    threading.Thread(target=_schedule_self_check, daemon=True).start()
 
     httpd, url, _token = start_server(args.port)
     _say(f"PC Cleaner {__version__} đang chạy tại {url}")

@@ -22,10 +22,23 @@ if not WEB_DIR.is_dir():
     WEB_DIR = Path(__file__).parent / "web"
 
 
+LOG_MAX_BYTES = 1024 * 1024  # app.log is rotated to app.log.1 above this size
+
+
 def _log_exc() -> None:
-    """Write the current exception to app.log (packaged apps have no console)."""
+    """Write the current exception to app.log (packaged apps have no console).
+
+    The log never grows past about 2 MB: when app.log reaches 1 MB it becomes
+    app.log.1 (replacing the older one) and a new app.log is started.
+    """
     try:
-        with open(paths.data_dir() / "app.log", "a", encoding="utf-8") as f:
+        log = paths.data_dir() / "app.log"
+        try:
+            if log.stat().st_size >= LOG_MAX_BYTES:
+                os.replace(log, log.with_name("app.log.1"))
+        except FileNotFoundError:
+            pass
+        with open(log, "a", encoding="utf-8") as f:
             f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + traceback.format_exc() + "\n")
     except OSError:
         pass

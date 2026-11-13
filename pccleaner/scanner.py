@@ -175,14 +175,14 @@ def _scan(conn, root, progress, cancel, on_progress, incremental) -> int:
                 progress.bytes += size
                 for child in prev_children.get(old[0], []):
                     try:
-                        st = os.lstat(child)
+                        st = os.lstat(paths.lp(child))
                     except OSError:
                         continue
                     if stat.S_ISDIR(st.st_mode):
                         add_dir(child, did, st.st_mtime)
             else:
                 try:
-                    it = os.scandir(dpath)
+                    it = os.scandir(paths.lp(dpath))
                 except OSError:
                     progress.errors += 1
                     continue
@@ -192,7 +192,7 @@ def _scan(conn, root, progress, cancel, on_progress, incremental) -> int:
                             if entry.is_symlink():
                                 continue
                             if entry.is_dir(follow_symlinks=False):
-                                full = entry.path
+                                full = os.path.join(dpath, entry.name)  # without the long-path prefix
                                 if os.path.normcase(full) in skip or entry.name == paths.VOLUME_QUARANTINE:
                                     continue
                                 st = entry.stat(follow_symlinks=False)

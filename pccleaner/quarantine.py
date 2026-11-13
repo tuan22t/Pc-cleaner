@@ -80,7 +80,7 @@ def _new_batch() -> str:
 
 def _rename(src: str, dst: str) -> None:
     """Atomic move on one drive. Raises instead of copying across drives."""
-    os.rename(src, dst)
+    os.rename(paths.lp(src), paths.lp(dst))
 
 
 def _run_chunks(conn, jobs: list[dict], pending_kind: str, done_kind: str,
@@ -111,8 +111,8 @@ def _run_chunks(conn, jobs: list[dict], pending_kind: str, done_kind: str,
             _tick(progress, on_progress, j["src"])
             try:
                 _hit("before_move")
-                os.makedirs(os.path.dirname(j["dst"]), exist_ok=True)
-                if os.path.exists(j["dst"]):
+                os.makedirs(paths.lp(os.path.dirname(j["dst"])), exist_ok=True)
+                if os.path.exists(paths.lp(j["dst"])):
                     raise FileExistsError("Đã có file cùng tên ở nơi đến")
                 _rename(j["src"], j["dst"])
                 _hit("after_move")
@@ -136,7 +136,7 @@ def _free_name(path: str) -> str:
     stem, ext = os.path.splitext(path)
     for n in range(1, 1000):
         cand = f"{stem} (khôi phục{'' if n == 1 else ' ' + str(n)}){ext}"
-        if not os.path.exists(cand):
+        if not os.path.exists(paths.lp(cand)):
             return cand
     raise FileExistsError("Đã có file khác ở vị trí cũ")
 
@@ -196,10 +196,10 @@ def quarantine(
                     cloud = paths.cloud_name(src)
                     if cloud:
                         raise ProtectedPathError(f"Nằm trong thư mục {cloud}: cần anh/chị xác nhận riêng")
-            if not os.path.isfile(src) or os.path.islink(src):
+            if not os.path.isfile(paths.lp(src)) or os.path.islink(paths.lp(src)):
                 raise FileNotFoundError("Không phải file thường hoặc không còn tồn tại")
             dst = str(paths.quarantine_dir_for(src) / batch_id / str(i) / os.path.basename(src))
-            jobs.append({"src": src, "dst": dst, "size": os.path.getsize(src), "reason": reason, "batch": batch_id})
+            jobs.append({"src": src, "dst": dst, "size": os.path.getsize(paths.lp(src)), "reason": reason, "batch": batch_id})
         except Exception as e:  # noqa: BLE001
             if log_failures:
                 _log(conn, batch_id, "error", src, None, 0, f"{reason}: {_friendly(e)}")
@@ -237,17 +237,17 @@ def move_files(moves: list[tuple[str, str]], reason: str = "", cancel=None,
             why = paths.protection_reason(src) or paths.protection_reason(dst)
             if why:
                 raise ProtectedPathError(why)
-            if not os.path.isfile(src) or os.path.islink(src):
+            if not os.path.isfile(paths.lp(src)) or os.path.islink(paths.lp(src)):
                 raise FileNotFoundError("Không phải file thường hoặc không còn tồn tại")
-            if os.path.exists(dst):
+            if os.path.exists(paths.lp(dst)):
                 raise FileExistsError("Đã có file cùng tên ở nơi đến")
             missing, d = [], os.path.dirname(dst)
-            while not os.path.exists(d) and os.path.normcase(d) not in planned_dirs:
+            while not os.path.exists(paths.lp(d)) and os.path.normcase(d) not in planned_dirs:
                 missing.append(d)
                 d = os.path.dirname(d)
             planned_dirs.update(os.path.normcase(m) for m in missing)
             # Logged before they are created, so undo can remove them again.
-            jobs.append({"src": src, "dst": dst, "size": os.path.getsize(src), "reason": reason,
+            jobs.append({"src": src, "dst": dst, "size": os.path.getsize(paths.lp(src)), "reason": reason,
                          "batch": batch_id, "mkdirs": list(reversed(missing))})
         except Exception as e:  # noqa: BLE001
             _log(conn, batch_id, "error", src, None, 0, f"{reason}: {_friendly(e)}")
@@ -285,17 +285,17 @@ def restore(batch_id: str, cancel=None, progress: Progress | None = None, on_pro
             conn.commit()
         try:
             target = r["path"]
-            if os.path.exists(target):
-                if r["stored_at"] and not os.path.exists(r["stored_at"]):
+            if os.path.exists(paths.lp(target)):
+                if r["stored_at"] and not os.path.exists(paths.lp(r["stored_at"])):
                     # Already back in place (an earlier undo stopped before saving that).
                     conn.execute("UPDATE actions SET restored=1 WHERE id=?", (r["id"],))
                     ok += 1
                     continue
                 # A new file now has this name: never overwrite it, put ours beside it.
                 target = _free_name(target)
-            if not r["stored_at"] or not os.path.exists(r["stored_at"]):
+            if not r["stored_at"] or not os.path.exists(paths.lp(r["stored_at"])):
                 raise FileNotFoundError("Không còn bản lưu trong khu cách ly (ổ đĩa đã bị rút ra hoặc bị xóa?)")
-            os.makedirs(os.path.dirname(target), exist_ok=True)
+            os.makedirs(paths.lp(os.path.dirname(target)), exist_ok=True)
             _rename(r["stored_at"], target)
             _hit("restore_after_move")
             conn.execute("UPDATE actions SET restored=1 WHERE id=?", (r["id"],))
@@ -309,7 +309,7 @@ def restore(batch_id: str, cancel=None, progress: Progress | None = None, on_pro
     # Remove folders the organizer created, deepest first, if they are empty again.
     for r in conn.execute("SELECT path FROM actions WHERE batch_id=? AND kind='mkdir' ORDER BY id DESC", (batch_id,)):
         try:
-            os.rmdir(r["path"])
+            os.rmdir(paths.lp(r["path"]))
         except OSError:
             pass
     conn.commit()
@@ -355,10 +355,10 @@ def purge_batch(batch_id: str, cancel=None, progress: Progress | None = None, on
         if n % CHUNK == 0:
             conn.commit()
         try:
-            if r["stored_at"] and os.path.exists(r["stored_at"]):
+            if r["stored_at"] and os.path.exists(paths.lp(r["stored_at"])):
                 if not _is_quarantine_copy(r["stored_at"]):
                     raise ProtectedPathError("Bản lưu không nằm trong khu cách ly")
-                os.remove(r["stored_at"])
+                os.remove(paths.lp(r["stored_at"]))
                 _hit("purge_after_remove")
                 freed += r["size"]
             conn.execute("UPDATE actions SET restored=2 WHERE id=?", (r["id"],))
@@ -407,8 +407,8 @@ def recover() -> dict:
     ).fetchall()
     finished = aborted = missing = 0
     for r in rows:
-        src_ok = os.path.exists(r["path"])
-        dst_ok = bool(r["stored_at"]) and os.path.exists(r["stored_at"])
+        src_ok = os.path.exists(paths.lp(r["path"]))
+        dst_ok = bool(r["stored_at"]) and os.path.exists(paths.lp(r["stored_at"]))
         done_kind = "quarantine" if r["kind"] == "pending-quarantine" else "move"
         if dst_ok and not src_ok:
             conn.execute("UPDATE actions SET kind=? WHERE id=?", (done_kind, r["id"]))

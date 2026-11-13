@@ -8,17 +8,30 @@ on:
 
 jobs:
   test:
+    # Windows Server 2022 shares its core with Windows 10, Server 2025 with Windows 11
+    # (GitHub offers no desktop Windows runners). macos-15-intel is an Intel Mac,
+    # macos-latest an Apple Silicon Mac.
     strategy:
+      fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-2022, windows-2025, macos-15-intel, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install "Pillow>=10.0"
-      - run: python -m unittest discover -s tests -v
+      - run: pip install "Pillow>=10.0" "coverage>=7.4"
+      - name: Tests (with coverage)
+        run: python -m coverage run --source=pccleaner -m unittest discover -s tests -v
+      - name: Coverage of the shared core must stay at 80% or more
+        shell: bash
+        run: |
+          python -m coverage report --omit="pccleaner/app.py,pccleaner/platforms/windows.py,pccleaner/platforms/macos.py,pccleaner/platforms/linux.py" --fail-under=80
+          echo "--- this system's own module:"
+          python -m coverage report --include="pccleaner/platforms/*.py"
+      - name: Rescan of 100,000 files must be 3x faster than the first scan
+        run: python tools/bench_scan.py 100000 3
 
   package:
     needs: test

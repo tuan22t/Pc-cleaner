@@ -598,7 +598,8 @@ async function renderSchedule() {
   $("#schJunk").checked = c.junk; $("#schPurge").value = String(c.purge_days);
   const last = c.last_run;
   $("#schStatus").innerHTML = (!c.supported ? `<div class="info">Dọn dẹp theo lịch dành cho Windows và macOS.</div>` : "") +
-    `<p>${c.enabled ? (c.registered ? "✅ Lịch đang bật và đã được đăng ký với hệ điều hành." : "⚠️ Lịch đang bật nhưng chưa đăng ký được với hệ điều hành. Hãy bấm Lưu lịch lần nữa.") : "Lịch đang tắt."}</p>` +
+    (c.enabled && c.health && !c.health.ok ? `<div class="info warn">⚠️ ${esc(c.health.message)}</div>` :
+    `<p>${c.enabled ? (c.registered ? "✅ Lịch đang bật và đã được đăng ký với hệ điều hành." : "⚠️ Lịch đang bật nhưng chưa đăng ký được với hệ điều hành. Hãy bấm Lưu lịch lần nữa.") : "Lịch đang tắt."}</p>`) +
     (last && last.skipped ? `<p class="muted">Lần chạy gần nhất: ${fmtDate(last.ts)} · ${esc(last.skipped)}.</p>` : last ? `<p class="muted">Lần chạy gần nhất: ${fmtDate(last.ts)} · dọn ${num(last.junk_moved)} file rác (${fmt(last.junk_bytes)})${last.purged_bytes ? ` · xóa hẳn ${fmt(last.purged_bytes)} trong khu cách ly` : ""}.</p>` : `<p class="muted">Chưa chạy lần nào.</p>`) +
     `<p class="muted">Khu cách ly đang giữ ${fmt(c.pending_bytes)}.</p>`;
 }

@@ -19,7 +19,7 @@ _BASE.mkdir(exist_ok=True)
 TMP = tempfile.mkdtemp(dir=_BASE)
 os.environ.setdefault("PCCLEANER_DATA_DIR", os.path.join(TMP, "data"))
 
-from pccleaner import db, organizer, paths, quarantine, scanner  # noqa: E402
+from pccleaner import db, organizer, paths, quarantine, scanner, scheduler, server, similar, startup, startup_base  # noqa: E402
 
 OLD = time.time() - 3600
 
@@ -265,6 +265,212 @@ class FaultTest(Base):
             sid = scanner.scan(str(self.root), incremental=False)
         row = db.connect().execute("SELECT status, error_count FROM scans WHERE id=?", (sid,)).fetchone()
         self.assertEqual((row[0], row[1]), ("done", 1))
+
+
+class SchedulerHealthTest(Base):
+    def cfg(self):
+        return dict(scheduler.DEFAULTS, enabled=True)
+
+    def test_disabled_is_healthy(self):
+        self.assertTrue(scheduler.health(dict(scheduler.DEFAULTS))["ok"])
+
+    def test_detects_moved_app_and_fixes_it(self):
+        db.set_setting("schedule", __import__("json").dumps(self.cfg()))
+        registered = []
+        with mock.patch.object(paths, "IS_WINDOWS", True), \
+                mock.patch.object(scheduler, "_registered_command", return_value='"D:\\Old place\\PCCleaner.exe" --auto-clean'), \
+                mock.patch.object(scheduler, "_command", return_value=["C:\\New\\PCCleaner.exe", "--auto-clean"]), \
+                mock.patch.object(scheduler, "_register", side_effect=registered.append):
+            self.assertEqual(scheduler.health(self.cfg())["problem"], "moved")
+            r = scheduler.self_check()
+        self.assertEqual(r.get("fixed"), "moved")
+        self.assertEqual(len(registered), 1)
+
+    def test_same_command_is_healthy(self):
+        with mock.patch.object(paths, "IS_WINDOWS", True), \
+                mock.patch.object(scheduler, "_registered_command", return_value='"C:\\Program Files\\PCCleaner\\PCCleaner.exe" --auto-clean'), \
+                mock.patch.object(scheduler, "_command", return_value=["C:\\Program Files\\PCCleaner\\PCCleaner.exe", "--auto-clean"]):
+            self.assertTrue(scheduler.health(self.cfg())["ok"])
+
+    def test_missing_task_is_reported(self):
+        with mock.patch.object(paths, "IS_WINDOWS", True), \
+                mock.patch.object(scheduler, "_registered_command", return_value=None):
+            self.assertEqual(scheduler.health(self.cfg())["problem"], "missing")
+
+    def test_mac_translocation_is_not_registered(self):
+        db.set_setting("schedule", __import__("json").dumps(self.cfg()))
+        with mock.patch.object(paths, "IS_WINDOWS", False), mock.patch.object(paths, "IS_MAC", True), \
+                mock.patch.object(scheduler.sys, "executable", "/private/var/folders/x/AppTranslocation/ABC/d/PCCleaner.app/Contents/MacOS/PCCleaner"), \
+                mock.patch.object(scheduler, "_register") as reg:
+            r = scheduler.self_check()
+        self.assertEqual(r["problem"], "translocated")
+        reg.assert_not_called()
+
+
+class LogRotationTest(Base):
+    def test_log_is_rotated(self):
+        log = paths.data_dir() / "app.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_bytes(b"x" * server.LOG_MAX_BYTES)
+        try:
+            raise ValueError("boom")
+        except ValueError:
+            server._log_exc()
+        self.assertEqual((paths.data_dir() / "app.log.1").stat().st_size, server.LOG_MAX_BYTES)
+        self.assertIn("boom", log.read_text(encoding="utf-8"))
+        self.assertLess(log.stat().st_size, 10_000)
+
+
+class LongPathTest(Base):
+    def test_prefix_rules(self):
+        with mock.patch.object(paths, "IS_WINDOWS", True):
+            long_path = "C:\\" + "folder\\" * 40 + "f.txt"
+            self.assertTrue(paths.lp(long_path).startswith("\\\\?\\C:\\"))
+            self.assertTrue(paths.lp("\\\\server\\share\\" + "d\\" * 130).startswith("\\\\?\\UNC\\server"))
+            self.assertEqual(paths.lp("C:\\short.txt"), "C:\\short.txt")
+        self.assertEqual(paths.lp("/x" * 200), "/x" * 200)  # unchanged elsewhere
+
+    @unittest.skipUnless(paths.IS_WINDOWS, "Windows only")
+    def test_quarantine_and_restore_deep_file(self):
+        deep = str(self.root) + "\\" + "\\".join(["thu-muc-rat-dai-%02d" % i for i in range(16)])
+        self.assertGreater(len(deep), 300)
+        os.makedirs(paths.lp(deep))
+        f = deep + "\\tai-lieu.txt"
+        with open(paths.lp(f), "w") as fh:
+            fh.write("hello")
+        res = quarantine.quarantine([f], "test")
+        self.assertEqual(res["moved"], 1, res)
+        self.assertFalse(os.path.exists(paths.lp(f)))
+        quarantine.restore(res["batch_id"])
+        self.assertTrue(os.path.exists(paths.lp(f)))
+        sid = scanner.scan(str(self.root), incremental=False)
+        self.assertGreaterEqual(db.connect().execute("SELECT file_count FROM scans WHERE id=?", (sid,)).fetchone()[0], 1)
+
+
+class ImageLimitTest(Base):
+    def test_huge_image_is_skipped(self):
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("Pillow not installed")
+        p = self.root / "big.png"
+        Image.new("L", (100, 100)).save(p)
+        with mock.patch.object(similar, "MAX_PIXELS", 5000):
+            with self.assertRaises(OSError):
+                similar.dhash(str(p))
+        self.assertEqual(similar.dhash(str(p))[1:], (100, 100))
+
+
+class FakeRun:
+    """Records commands instead of running them."""
+
+    def __init__(self, rc=0, out="", err=""):
+        self.calls, self.rc, self.out, self.err = [], rc, out, err
+
+    def __call__(self, cmd):
+        self.calls.append(cmd)
+        return mock.Mock(returncode=self.rc, stdout=self.out, stderr=self.err)
+
+
+class SchedulerRegisterTest(Base):
+    def test_windows_task_is_created_for_current_user(self):
+        run = FakeRun()
+        with mock.patch.object(paths, "IS_WINDOWS", True), mock.patch.object(paths, "IS_MAC", False), \
+                mock.patch.object(scheduler, "_run", run), mock.patch.object(scheduler, "health", return_value={"ok": True}):
+            cfg = scheduler.save({"enabled": True, "frequency": "weekly", "hour": 30, "purge_days": 9999})
+        cmd = run.calls[0]
+        self.assertEqual(cmd[:2], ["schtasks", "/Create"])
+        self.assertIn("SUN", cmd)
+        self.assertNotIn("/RU", cmd)  # no "run as" another account, no admin rights
+        self.assertEqual((cfg["hour"], cfg["purge_days"]), (23, 365))
+
+    def test_windows_failure_is_reported(self):
+        with mock.patch.object(paths, "IS_WINDOWS", True), mock.patch.object(paths, "IS_MAC", False), \
+                mock.patch.object(scheduler, "_run", FakeRun(rc=1, err="Access is denied")):
+            with self.assertRaises(RuntimeError):
+                scheduler.save({"enabled": True})
+
+    def test_bad_frequency_refused(self):
+        with self.assertRaises(ValueError):
+            scheduler.save({"enabled": True, "frequency": "hourly"})
+
+    def test_mac_launch_agent(self):
+        home = Path(tempfile.mkdtemp(dir=TMP))
+        run = FakeRun()
+        with mock.patch.object(paths, "IS_WINDOWS", False), mock.patch.object(paths, "IS_MAC", True), \
+                mock.patch.object(scheduler, "_run", run), mock.patch.object(scheduler.Path, "home", return_value=home), \
+                mock.patch.object(scheduler.os, "getuid", create=True, return_value=501), \
+                mock.patch.object(scheduler, "health", return_value={"ok": True}):
+            scheduler.save({"enabled": True, "frequency": "monthly", "hour": 9})
+            plist = scheduler._plist_path()
+            self.assertTrue(plist.exists())
+            self.assertEqual(scheduler._registered_command(), __import__("subprocess").list2cmdline(scheduler._command()))
+            self.assertTrue(scheduler.is_registered())
+            scheduler.save({"enabled": False})
+            self.assertFalse(plist.exists())
+        self.assertIn(["launchctl", "bootstrap", "gui/501", str(plist)], run.calls)
+
+    def test_windows_registered_command_is_read_from_xml(self):
+        xml = "<Task><Actions><Exec><Command>\"C:\\A &amp; B\\PCCleaner.exe\"</Command>" \
+              "<Arguments>--auto-clean</Arguments></Exec></Actions></Task>"
+        with mock.patch.object(paths, "IS_WINDOWS", True), mock.patch.object(scheduler, "_run", FakeRun(out=xml)):
+            self.assertEqual(scheduler._registered_command(), '"C:\\A & B\\PCCleaner.exe" --auto-clean')
+
+    def test_auto_clean_purges_only_old_batches(self):
+        f = self.root / "old.bin"
+        f.write_bytes(b"o" * 10)
+        res = quarantine.quarantine([str(f)], "test")
+        db.set_setting("schedule", __import__("json").dumps(dict(scheduler.DEFAULTS, junk=False, purge_days=1)))
+        self.assertEqual(scheduler.run_auto_clean()["purged_bytes"], 0)  # too recent
+        conn = db.connect()
+        conn.execute("UPDATE actions SET ts=ts-? WHERE batch_id=?", (2 * 86400, res["batch_id"]))
+        conn.commit()
+        self.assertEqual(scheduler.run_auto_clean()["purged_bytes"], 10)
+        scheduler.record_skipped("app open")
+        self.assertEqual(scheduler.get()["last_run"]["skipped"], "app open")
+
+
+class StartupRecordTest(Base):
+    def setUp(self):
+        super().setUp()
+        self.items = [{"id": "x1", "kind": "run", "name": "Spotify", "enabled": True, "label": "safe", "command": "s.exe"}]
+        self.fail_next = False
+
+        def set_enabled(item, on):
+            if self.fail_next:
+                raise PermissionError("denied")
+            next(i for i in self.items if i["id"] == item["id"])["enabled"] = on
+
+        self.saved = list(startup_base.PROVIDERS)
+        startup_base.PROVIDERS[:] = []
+        startup_base.register_provider(startup_base.Provider("fake", {"run"}, lambda: [dict(i) for i in self.items], set_enabled))
+
+    def tearDown(self):
+        startup_base.PROVIDERS[:] = self.saved
+
+    def test_disable_records_first_and_enable_closes(self):
+        startup.set_enabled("x1", False)
+        self.assertEqual(startup_base._change("x1")["command"], "s.exe")
+        self.assertTrue(startup.list_items()[0]["changed_by_app"])
+        self.assertEqual(startup.set_enabled("x1", False), {"ok": True, "unchanged": True})
+        startup.set_enabled("x1", True)
+        self.assertIsNone(startup_base._change("x1"))
+        self.assertEqual(len(startup_base.history()), 1)
+
+    def test_failed_disable_leaves_no_record(self):
+        self.fail_next = True
+        with self.assertRaises(PermissionError):
+            startup.set_enabled("x1", False)
+        self.assertIsNone(startup_base._change("x1"))
+
+    def test_unknown_item_refused(self):
+        with self.assertRaises(KeyError):
+            startup.set_enabled("nope", False)
+
+    def test_labels(self):
+        self.assertEqual(startup_base.classify("Windows Defender")[0], "keep")
+        self.assertEqual(startup_base.classify("Zalo")[0], "safe")
+        self.assertEqual(startup_base.classify("xyz")[0], "unknown")
 
 
 def tearDownModule():
