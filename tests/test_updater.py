@@ -136,6 +136,15 @@ class UpdaterTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             updater.save_settings({"channel": "nightly"})
 
+    def test_nothing_published_yet(self):
+        st = updater.check()  # the server has no stable.json yet (404)
+        self.assertIsNone(st["available"])
+        self.assertIsNotNone(st["last_check"])
+
+    def test_built_in_key_and_address(self):
+        self.assertEqual(len(bytes.fromhex(updater.UPDATE_PUBLIC_KEY)), 32)
+        self.assertTrue(updater.UPDATE_BASE_URL.startswith("https://github.com/"))
+
     def test_not_configured_does_nothing(self):
         with mock.patch.dict(os.environ, {"PCCLEANER_UPDATE_KEY": "", "PCCLEANER_UPDATE_URL": ""}):
             with mock.patch.object(updater, "UPDATE_PUBLIC_KEY", ""), mock.patch.object(updater, "UPDATE_BASE_URL", ""):

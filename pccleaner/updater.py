@@ -25,6 +25,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -32,9 +33,9 @@ from . import APP_ID, __version__, db, ed25519, paths
 from .i18n import _
 
 # Set when the release key is made (see docs/phat-hanh.md). Empty: updates are off.
-UPDATE_PUBLIC_KEY = ""
+UPDATE_PUBLIC_KEY = "56b64115b97e552d6158d49cdbe096cc4d5af578bf99442207b5b3ca168c40c8"
 # Folder on the release server holding stable.json and beta.json.
-UPDATE_BASE_URL = ""
+UPDATE_BASE_URL = "https://github.com/tuan22t/pc-cleaner-releases/releases/download/updates"
 CHANNELS = ("stable", "beta")
 MAX_SIZE = 400 * 2**20
 CHECK_EVERY = 24 * 3600
@@ -127,7 +128,14 @@ def check(force: bool = False) -> dict:
     if not configured():
         return status()
     cfg = settings()
-    raw = _fetch(f"{_base_url()}/{cfg['channel']}.json", 256 * 1024)
+    try:
+        raw = _fetch(f"{_base_url()}/{cfg['channel']}.json", 256 * 1024)
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            raise
+        # Nothing published on this channel yet: same as "you have the latest version".
+        db.set_setting("update_last", json.dumps({"ts": time.time(), "info": None}))
+        return status()
     info = verify_announcement(raw, cfg["channel"])
     newer = parse_version(info["version"]) > parse_version(__version__)
     db.set_setting("update_last", json.dumps({"ts": time.time(), "info": info if newer else None}))

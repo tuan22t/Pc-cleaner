@@ -158,7 +158,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
       UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
-      REPO: ${{ vars.RELEASES_REPO }}
+      REPO: tuan22t/pc-cleaner-releases
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

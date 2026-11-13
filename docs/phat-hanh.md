@@ -20,10 +20,11 @@
 
 ## Cài đặt một lần (Settings → Secrets and variables → Actions của kho mã)
 
+Bộ cài và thông báo cập nhật được đưa lên kho công khai `tuan22t/pc-cleaner-releases` (ghi trong `.github/workflows/build.yml`).
+
 | Tên | Loại | Dùng để |
 |---|---|---|
-| `RELEASES_REPO` | Variable | Kho công khai chứa bộ cài, ví dụ `tuan22t/pc-cleaner-releases` |
-| `RELEASES_TOKEN` | Secret | Token GitHub (fine-grained) có quyền Contents: Read and write trên kho công khai đó |
+| `RELEASES_TOKEN` | Secret | Token GitHub (fine-grained) có quyền Contents: Read and write trên kho công khai đó (đã tạo, hết hạn 13/11/2027) |
 | `UPDATE_SIGNING_KEY` | Secret | Khóa riêng để ký thông báo cập nhật (64 ký tự hex) |
 | `WIN_SIGN_COMMAND` | Secret | Lệnh ký số Windows, có `$f` ở chỗ tên tệp (khi đã có chứng chỉ) |
 | `MAC_CERT_P12`, `MAC_CERT_PASSWORD`, `MAC_SIGN_IDENTITY` | Secret | Chứng chỉ Developer ID của Apple (p12 dạng base64) |
@@ -40,7 +41,7 @@ Khi chưa có chứng chỉ, các bước ký và công chứng được bỏ qu
 - Khóa **công khai** (public) ghi vào `UPDATE_PUBLIC_KEY` trong
   `pccleaner/updater.py`.
 - `UPDATE_BASE_URL` trong cùng tệp là
-  `https://github.com/<RELEASES_REPO>/releases/download/updates`.
+  `https://github.com/tuan22t/pc-cleaner-releases/releases/download/updates`.
 
 Mất khóa riêng thì các bản đã cài sẽ không nhận được cập nhật tự động nữa: người dùng
 phải tải bản mới bằng tay. Lộ khóa riêng thì người khác có thể giả bản cập nhật. Khi
