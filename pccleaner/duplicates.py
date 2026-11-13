@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import os
 import threading
 from collections import defaultdict
@@ -162,6 +163,24 @@ def find_duplicates(
     return len(groups)
 
 
+_LIKELY_COPY = re.compile(r"(copy|bản sao|\(\d+\)| - \d+$)", re.IGNORECASE)
+_TRANSIENT_DIRS = {"downloads", "desktop", "tải về", "temp", "tmp"}
+
+
+def _keep_rank(f: dict):
+    """Prefer a copy outside Downloads/Desktop whose name doesn't look like a copy, then the oldest."""
+    p = f["path"]
+    parts = {x.lower() for x in re.split(r"[\\/]", p)[:-1]}
+    stem = os.path.splitext(os.path.basename(p))[0]
+    return (
+        not f["exists"],
+        bool(parts & _TRANSIENT_DIRS),
+        bool(_LIKELY_COPY.search(stem)),
+        f["mtime"],
+        len(p),
+    )
+
+
 def get_groups(scan_id: int, limit: int = 500) -> dict:
     conn = db.connect()
     rows = conn.execute(
@@ -176,8 +195,8 @@ def get_groups(scan_id: int, limit: int = 500) -> dict:
         })
     out = list(groups.values())
     for g in out:
-        # Suggest keeping the oldest copy that is not protected-only; mark the rest.
-        g["files"].sort(key=lambda f: (f["mtime"], len(f["path"])))
+        # The copy listed first is suggested as the one to keep.
+        g["files"].sort(key=_keep_rank)
         g["wasted"] = g["size"] * (len(g["files"]) - 1)
     total = conn.execute(
         "SELECT COUNT(DISTINCT group_id) AS n, COALESCE(SUM(size),0) AS s FROM dup_groups WHERE scan_id=?", (scan_id,)

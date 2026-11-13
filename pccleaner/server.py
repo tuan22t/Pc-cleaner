@@ -59,6 +59,21 @@ class JobManager:
 
 jobs = JobManager()
 
+# Set by app.py when the UI runs inside a pywebview window; enables the native folder picker.
+window = None
+
+
+def _pick_folder() -> str | None:
+    if window is None:
+        raise RuntimeError("Chỉ chọn thư mục được khi chạy trong cửa sổ ứng dụng")
+    import webview  # type: ignore
+
+    kind = getattr(getattr(webview, "FileDialog", None), "FOLDER", None) or webview.FOLDER_DIALOG
+    result = window.create_file_dialog(kind)
+    if not result:
+        return None
+    return result[0] if isinstance(result, (list, tuple)) else str(result)
+
 
 def _reveal(path: str) -> None:
     if not os.path.exists(path):
@@ -152,7 +167,10 @@ def route(method: str, path: str, q: dict, body: dict):
             "home": str(Path.home()),
             "locations": paths.list_locations(),
             "data_dir": str(paths.data_dir()),
+            "can_pick_folder": window is not None,
         }
+    if key == ("POST", "pick-folder"):
+        return {"path": _pick_folder()}
     if key == ("GET", "job"):
         return jobs.state
     if key == ("POST", "cancel"):

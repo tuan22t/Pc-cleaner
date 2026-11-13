@@ -134,6 +134,14 @@ class CoreTest(unittest.TestCase):
         # The link itself must never be offered for removal through its target.
         self.assertTrue(os.path.isdir(loop))
 
+    def test_keep_suggestion_prefers_original(self):
+        fs = [
+            {"path": os.path.join("u", "Downloads", "IMG_1 (1).jpg"), "mtime": 1, "exists": True},
+            {"path": os.path.join("u", "Desktop", "IMG_1 - Copy.jpg"), "mtime": 0, "exists": True},
+            {"path": os.path.join("u", "Pictures", "IMG_1.jpg"), "mtime": 2, "exists": True},
+        ]
+        self.assertTrue(sorted(fs, key=duplicates._keep_rank)[0]["path"].endswith("IMG_1.jpg"))
+
 
 def tearDownModule():
     shutil.rmtree(TMP, ignore_errors=True)

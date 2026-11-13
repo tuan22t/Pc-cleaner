@@ -7,6 +7,7 @@ import time
 import webbrowser
 
 from . import __version__
+from . import server
 from .server import start_server
 
 
@@ -24,7 +25,9 @@ def main(argv: list[str] | None = None) -> int:
         try:
             import webview  # type: ignore
 
-            webview.create_window("PC Cleaner – Dọn dẹp máy tính", url, width=1200, height=800, min_size=(900, 600))
+            server.window = webview.create_window(
+                "PC Cleaner – Dọn dẹp máy tính", url, width=1200, height=800, min_size=(900, 600)
+            )
             webview.start()
             httpd.shutdown()
             return 0

@@ -9,15 +9,21 @@
 <body>
 <div class="app">
   <aside class="sidebar">
-    <div class="brand"><span class="logo">◐</span> PC Cleaner</div>
+    <div class="brand">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="#6ea1ff" d="M12 2a10 10 0 1 0 10 10h-10z"/><path fill="#3fd0a8" d="M14 0.5V10h9.5A9.5 9.5 0 0 0 14 0.5z"/></svg>
+      PC Cleaner
+    </div>
     <nav>
-      <a href="#" data-view="home" class="active">Tổng quan</a>
-      <a href="#" data-view="usage" data-needs-scan>Phân tích dung lượng</a>
-      <a href="#" data-view="large" data-needs-scan>File lớn</a>
-      <a href="#" data-view="old" data-needs-scan>File cũ ít dùng</a>
-      <a href="#" data-view="types" data-needs-scan>Theo loại file</a>
-      <a href="#" data-view="dups" data-needs-scan>File trùng lặp</a>
-      <a href="#" data-view="quarantine">Khu cách ly &amp; nhật ký</a>
+      <a href="#" data-view="home" class="active"><span class="ni">🏠</span>Tổng quan</a>
+      <div class="nav-sep">Báo cáo sau khi quét</div>
+      <a href="#" data-view="usage" data-needs-scan><span class="ni">📊</span>Thư mục chiếm chỗ</a>
+      <a href="#" data-view="large" data-needs-scan><span class="ni">🐘</span>File lớn nhất</a>
+      <a href="#" data-view="old" data-needs-scan><span class="ni">🕰️</span>File cũ lâu không dùng</a>
+      <a href="#" data-view="dups" data-needs-scan><span class="ni">👯</span>File trùng lặp</a>
+      <a href="#" data-view="types" data-needs-scan><span class="ni">🗂️</span>Theo loại file</a>
+      <p id="navHint" class="nav-hint">Hãy quét một ổ đĩa hoặc thư mục ở trang Tổng quan để mở các báo cáo này.</p>
+      <div class="nav-sep">An toàn</div>
+      <a href="#" data-view="quarantine"><span class="ni">🛟</span>Khu cách ly &amp; hoàn tác <span id="qBadge" class="badge hidden"></span></a>
       <div class="nav-sep">Sắp có</div>
       <a class="soon">Rác hệ thống</a>
       <a class="soon">Chương trình khởi động</a>
@@ -25,32 +31,43 @@
       <a class="soon">Dọn dẹp theo lịch</a>
     </nav>
     <div class="scan-pick">
-      <label for="scanSelect">Kết quả quét</label>
+      <label for="scanSelect">Đang xem kết quả quét</label>
       <select id="scanSelect"></select>
     </div>
   </aside>
 
   <main>
     <div id="jobBar" class="jobbar hidden">
-      <div class="job-text"><strong id="jobTitle">Đang quét…</strong> <span id="jobDetail"></span></div>
+      <div class="spinner"></div>
+      <div class="job-text">
+        <strong id="jobTitle">Đang quét…</strong>
+        <div id="jobDetail" class="muted"></div>
+      </div>
       <div class="progress"><div id="jobProgress"></div></div>
-      <button id="jobCancel" class="btn ghost small">Dừng</button>
+      <button id="jobCancel" class="btn ghost small">Dừng lại</button>
     </div>
 
     <section id="view-home" class="view active">
-      <h1>Tổng quan</h1>
-      <p class="muted">Chọn ổ đĩa hoặc thư mục để quét. Quét chỉ đọc, không thay đổi gì trên máy.</p>
+      <h1>Dọn dẹp máy tính</h1>
+      <div class="steps">
+        <div class="step"><b>1</b><div><strong>Quét</strong><span>Chọn ổ đĩa hoặc thư mục. Quét chỉ đọc, không thay đổi gì trên máy.</span></div></div>
+        <div class="step"><b>2</b><div><strong>Xem báo cáo</strong><span>Biết thư mục nào, file nào đang chiếm nhiều chỗ, file nào bị trùng.</span></div></div>
+        <div class="step"><b>3</b><div><strong>Dọn an toàn</strong><span>File được chuyển vào khu cách ly, lấy lại được bất cứ lúc nào.</span></div></div>
+      </div>
+      <h2>Chọn nơi cần quét</h2>
       <div id="locations" class="cards"></div>
       <div class="custom-scan">
-        <input id="customPath" placeholder="Hoặc nhập đường dẫn thư mục, ví dụ D:\Tai lieu hoặc ~/Downloads">
-        <button id="customScanBtn" class="btn primary">Quét thư mục này</button>
+        <button id="pickFolderBtn" class="btn hidden">📁 Chọn một thư mục khác…</button>
+        <input id="customPath" placeholder="Hoặc dán đường dẫn thư mục, ví dụ D:\Ảnh hoặc ~/Downloads">
+        <button id="customScanBtn" class="btn primary">Quét</button>
       </div>
-      <h2>Lần quét gần đây</h2>
+      <h2>Các lần quét trước</h2>
       <div id="recentScans"></div>
     </section>
 
     <section id="view-usage" class="view">
-      <h1>Phân tích dung lượng</h1>
+      <h1>Thư mục chiếm chỗ</h1>
+      <p class="muted">Ô càng to thì càng chiếm nhiều dung lượng. Bấm vào một thư mục để xem bên trong.</p>
       <div id="crumbs" class="crumbs"></div>
       <div id="treemap" class="treemap"></div>
       <div id="usageList" class="list"></div>
@@ -58,71 +75,79 @@
 
     <section id="view-large" class="view">
       <h1>File lớn nhất</h1>
+      <p class="muted">Đánh dấu những file anh/chị không cần nữa rồi bấm Dọn. File của hệ thống có biểu tượng 🔒 và không thể chọn.</p>
       <div class="toolbar">
-        <label>Tối thiểu <select id="largeMin">
-          <option value="0">bất kỳ</option><option value="10485760">10 MB</option>
+        <label>Chỉ hiện file từ <select id="largeMin">
+          <option value="0">mọi kích thước</option><option value="10485760">10 MB</option>
           <option value="104857600" selected>100 MB</option><option value="1073741824">1 GB</option>
-        </select></label>
-        <span class="spacer"></span>
-        <span id="largeSel" class="muted"></span>
-        <button class="btn danger" data-quarantine="large">Chuyển vào khu cách ly</button>
+        </select> trở lên</label>
       </div>
       <div id="largeList" class="list"></div>
     </section>
 
     <section id="view-old" class="view">
-      <h1>File cũ ít dùng</h1>
+      <h1>File cũ lâu không dùng</h1>
+      <p class="muted">File lớn đã lâu không được sửa. Thường là video, bộ cài đặt, bản sao lưu cũ có thể dọn.</p>
       <div class="toolbar">
         <label>Không sửa trong <select id="oldDays">
           <option value="180">6 tháng</option><option value="365" selected>1 năm</option><option value="730">2 năm</option>
         </select></label>
-        <label>Tối thiểu <select id="oldMin">
+        <label>và từ <select id="oldMin">
           <option value="10485760">10 MB</option><option value="52428800" selected>50 MB</option><option value="524288000">500 MB</option>
-        </select></label>
-        <span class="spacer"></span>
-        <span id="oldSel" class="muted"></span>
-        <button class="btn danger" data-quarantine="old">Chuyển vào khu cách ly</button>
+        </select> trở lên</label>
       </div>
       <div id="oldList" class="list"></div>
     </section>
 
     <section id="view-types" class="view">
       <h1>Dung lượng theo loại file</h1>
+      <p class="muted">Video, ảnh, tài liệu… mỗi loại đang chiếm bao nhiêu chỗ.</p>
       <div class="two-col">
         <div><h2>Nhóm</h2><div id="catList" class="bars"></div></div>
-        <div><h2>Đuôi file lớn nhất</h2><div id="extList" class="bars"></div></div>
+        <div><h2>Đuôi file chiếm nhiều nhất</h2><div id="extList" class="bars"></div></div>
       </div>
     </section>
 
     <section id="view-dups" class="view">
       <h1>File trùng lặp</h1>
-      <p class="muted">So sánh kích thước, rồi băm nhanh, rồi SHA-256 toàn bộ file. Chỉ những file giống nhau tuyệt đối mới được liệt kê.</p>
+      <p class="muted">Tìm các file giống nhau hoàn toàn về nội dung (dù khác tên). Mỗi nhóm luôn giữ lại ít nhất một bản.</p>
       <div class="toolbar">
         <label>Bỏ qua file nhỏ hơn <select id="dupMin">
           <option value="102400">100 KB</option><option value="1048576" selected>1 MB</option><option value="10485760">10 MB</option>
         </select></label>
-        <button id="dupRun" class="btn primary">Tìm file trùng</button>
-        <span class="spacer"></span>
-        <span id="dupsSel" class="muted"></span>
-        <button class="btn danger" data-quarantine="dups">Chuyển bản sao vào khu cách ly</button>
+        <button id="dupRun" class="btn primary">🔍 Tìm file trùng</button>
       </div>
       <div id="dupSummary" class="summary"></div>
       <div id="dupList"></div>
     </section>
 
     <section id="view-quarantine" class="view">
-      <h1>Khu cách ly &amp; nhật ký</h1>
-      <p class="muted">File bị dọn được chuyển vào khu cách ly, chưa xóa hẳn. Bấm <b>Hoàn tác</b> để trả về chỗ cũ.</p>
+      <h1>Khu cách ly &amp; hoàn tác</h1>
+      <div class="info">
+        Khi dọn, file <b>chưa bị xóa ngay</b> mà được cất vào đây. Bấm <b>Lấy lại</b> để trả file về đúng chỗ cũ.
+        Khi đã chắc chắn không cần nữa, bấm <b>Xóa vĩnh viễn</b> để giải phóng dung lượng thật sự.
+      </div>
+      <div id="qSummary" class="summary"></div>
       <div id="batchList" class="list"></div>
-      <h2>Nhật ký thao tác</h2>
-      <div id="logList" class="list small"></div>
+      <details class="log-wrap">
+        <summary>Nhật ký chi tiết mọi thao tác</summary>
+        <div id="logList" class="list small"></div>
+      </details>
     </section>
+
+    <div id="actionBar" class="actionbar hidden">
+      <label class="selall"><input type="checkbox" id="selAll"> Chọn tất cả</label>
+      <span id="selInfo"></span>
+      <span class="spacer"></span>
+      <button id="selClear" class="btn ghost">Bỏ chọn</button>
+      <button id="selClean" class="btn warn">🧹 Dọn các file đã chọn</button>
+    </div>
   </main>
 </div>
-<div id="toast" class="toast hidden"></div>
+<div id="toast" class="toast hidden"><span id="toastMsg"></span><button id="toastAct" class="btn small hidden"></button></div>
 <div id="modal" class="modal hidden"><div class="modal-box">
   <h3 id="modalTitle"></h3><div id="modalBody"></div>
-  <div class="modal-actions"><button id="modalCancel" class="btn ghost">Hủy</button><button id="modalOk" class="btn danger">Đồng ý</button></div>
+  <div class="modal-actions"><button id="modalCancel" class="btn ghost">Hủy</button><button id="modalOk" class="btn warn">Đồng ý</button></div>
 </div></div>
 <script src="app.js"></script>
 </body>
