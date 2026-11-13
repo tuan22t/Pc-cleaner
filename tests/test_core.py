@@ -5,8 +5,10 @@ import unittest
 from pathlib import Path
 
 # The system temp dir lives under protected folders on Windows (AppData) and
-# macOS (/private/var), so test files go in a folder under the home directory.
-TMP = tempfile.mkdtemp(prefix=".pccleaner-test-", dir=Path.home())
+# macOS (/private/var), so test files go in a folder next to the tests.
+_BASE = Path(__file__).resolve().parent / "_tmp"
+_BASE.mkdir(exist_ok=True)
+TMP = tempfile.mkdtemp(dir=_BASE)
 os.environ["PCCLEANER_DATA_DIR"] = os.path.join(TMP, "data")
 
 from pccleaner import db, duplicates, paths, quarantine, scanner  # noqa: E402
