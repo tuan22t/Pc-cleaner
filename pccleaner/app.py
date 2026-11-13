@@ -6,7 +6,7 @@ import sys
 import time
 import webbrowser
 
-from . import __version__
+from . import __version__, paths
 from . import server
 from .server import start_server
 
@@ -21,6 +21,35 @@ def _say(msg: str, err: bool = False) -> None:
             pass
 
 
+def _startup_recovery() -> None:
+    """Settle anything a crash or power cut left half done (see quarantine.recover)."""
+    from . import quarantine, scanner
+
+    try:
+        r = quarantine.recover()
+        if any(r.values()):
+            _say(f"Đã phục hồi sau lần tắt đột ngột: {r}")
+        scanner.cleanup_unfinished()
+    except Exception:  # noqa: BLE001 - recovery must never stop the app from opening
+        server._log_exc()
+
+
+def _already_running() -> None:
+    msg = "PC Cleaner đang chạy rồi. Hãy dùng cửa sổ đang mở (hoặc đợi lượt dọn tự động chạy xong)."
+    _say(msg, err=True)
+    try:
+        if paths.IS_WINDOWS:
+            import ctypes
+
+            ctypes.windll.user32.MessageBoxW(None, msg, "PC Cleaner", 0x40)
+        elif paths.IS_MAC:
+            import subprocess
+
+            subprocess.run(["osascript", "-e", f'display alert "PC Cleaner" message "{msg}"'], timeout=60)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="pccleaner", description="Dọn dẹp máy tính")
     ap.add_argument("--browser", action="store_true", help="mở trong trình duyệt thay vì cửa sổ riêng")
@@ -32,8 +61,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.auto_clean:
         from . import scheduler
 
+        if not paths.acquire_instance_lock():
+            # The app window is open: never move files from two processes at once.
+            scheduler.record_skipped("Ứng dụng đang mở nên lượt dọn tự động này được bỏ qua")
+            return 0
+        _startup_recovery()
         _say(str(scheduler.run_auto_clean()))
         return 0
+
+    if not paths.acquire_instance_lock():
+        _already_running()
+        return 1
+    _startup_recovery()
 
     httpd, url, _token = start_server(args.port)
     _say(f"PC Cleaner {__version__} đang chạy tại {url}")

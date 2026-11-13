@@ -18,6 +18,8 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
+import shlex
 import plistlib
 import subprocess
 import tempfile
@@ -406,6 +408,10 @@ def _mac_items() -> list[dict]:
     return items
 
 
+_SAFE_LABEL = re.compile(r"^[A-Za-z0-9._@+-]{1,200}$")
+_SAFE_DOMAIN = re.compile(r"^gui/\d+$")
+
+
 def _osascript_admin(shell: str) -> None:
     esc = shell.replace("\\", "\\\\").replace('"', '\\"')
     r = _run(["osascript", "-e", f'do shell script "{esc}" with administrator privileges'], timeout=300)
@@ -434,12 +440,16 @@ def _mac_set(item: dict, enable: bool) -> None:
             raise RuntimeError(r.stderr.strip()[:300] or "osascript lỗi")
         return
     _k, domain, label, plist = item["id"].split("|", 3)
+    if not _SAFE_LABEL.match(label) or not (domain == "system" or _SAFE_DOMAIN.match(domain)):
+        raise ValueError("Tên mục khởi động có ký tự lạ, ứng dụng không thay đổi mục này")
     target = f"{domain}/{label}"
     if domain == "system":
+        # Runs as root: every value is quoted, never pasted into the command as-is.
+        t, pl = shlex.quote(target), shlex.quote(plist)
         if enable:
-            _osascript_admin(f"launchctl enable {target}; launchctl bootstrap system '{plist}' || true")
+            _osascript_admin(f"/bin/launchctl enable {t}; /bin/launchctl bootstrap system {pl} || true")
         else:
-            _osascript_admin(f"launchctl disable {target}; launchctl bootout {target} || true")
+            _osascript_admin(f"/bin/launchctl disable {t}; /bin/launchctl bootout {t} || true")
         return
     r = _run(["launchctl", "enable" if enable else "disable", target])
     if r.returncode != 0:

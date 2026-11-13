@@ -72,8 +72,124 @@ def protected_roots() -> list[str]:
     return [_norm(r) for r in roots]
 
 
-def is_protected(path: str | os.PathLike) -> bool:
-    """True if ``path`` is, or lies inside, a protected folder.
+# Name of the quarantine folder the app creates at the root of other drives
+# (D:, external disks) so that cleaning there never copies data to the system drive.
+VOLUME_QUARANTINE = ".PCCleaner-quarantine"
+
+# Folders that are one unit: removing a single file inside breaks the whole
+# thing (a photo library, an app, a code repository), even when that file is a
+# true duplicate. Matched on any path component, case-insensitively.
+PACKAGE_SUFFIXES = {
+    ".photoslibrary": "thư viện Ảnh (Photos)",
+    ".photolibrary": "thư viện iPhoto",
+    ".aplibrary": "thư viện Aperture",
+    ".lrdata": "dữ liệu Lightroom",
+    ".lrlibrary": "thư viện Lightroom",
+    ".cocatalog": "thư viện Capture One",
+    ".imovielibrary": "thư viện iMovie",
+    ".fcpbundle": "thư viện Final Cut Pro",
+    ".musiclibrary": "thư viện Nhạc",
+    ".tvlibrary": "thư viện TV",
+    ".logicx": "dự án Logic Pro",
+    ".band": "dự án GarageBand",
+    ".app": "ứng dụng",
+    ".bundle": "gói ứng dụng",
+    ".framework": "thư viện phần mềm",
+    ".plugin": "phần bổ trợ",
+    ".kext": "phần mở rộng hệ thống",
+    ".pkg": "bộ cài",
+    ".sparsebundle": "ổ đĩa ảo",
+    ".xcodeproj": "dự án Xcode",
+    ".xcworkspace": "dự án Xcode",
+    ".rtfd": "tài liệu",
+    ".pages": "tài liệu Pages",
+    ".numbers": "bảng tính Numbers",
+    ".key": "bản trình chiếu Keynote",
+}
+PACKAGE_NAMES = {
+    ".git": "kho mã nguồn (git)",
+    ".svn": "kho mã nguồn (svn)",
+    ".hg": "kho mã nguồn (hg)",
+    "node_modules": "thư viện lập trình",
+    "site-packages": "thư viện Python",
+    ".venv": "môi trường Python",
+    "venv": "môi trường Python",
+    "steamapps": "thư viện game Steam",
+    "windowsapps": "ứng dụng Windows",
+    VOLUME_QUARANTINE.lower(): "khu cách ly",
+}
+
+
+def package_reason(path: str | os.PathLike) -> str | None:
+    """Name the package ``path`` sits in (photo library, app, repository), or None."""
+    parts = _norm(path).replace("\\", "/").split("/")
+    for part in parts[:-1] if len(parts) > 1 else []:
+        low = part.lower()
+        if low in PACKAGE_NAMES:
+            return PACKAGE_NAMES[low]
+        for suffix, label in PACKAGE_SUFFIXES.items():
+            if low.endswith(suffix) and len(low) > len(suffix):
+                return label
+    return None
+
+
+_cloud_cache: tuple[float, str, list] | None = None
+
+
+def cloud_roots() -> list[tuple[str, str]]:
+    """Folders kept in sync with an online service: removing a file there removes it everywhere."""
+    global _cloud_cache
+    import time
+
+    home = Path.home()
+    if _cloud_cache and _cloud_cache[1] == str(home) and time.time() - _cloud_cache[0] < 30:
+        return _cloud_cache[2]
+    result = _find_cloud_roots(home)
+    _cloud_cache = (time.time(), str(home), result)
+    return result
+
+
+def _find_cloud_roots(home: Path) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    for var in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial"):
+        v = os.environ.get(var)
+        if v:
+            found.append((v, "OneDrive"))
+    try:
+        for child in home.iterdir():
+            name = child.name
+            if name.startswith("OneDrive"):
+                found.append((str(child), "OneDrive"))
+            elif name == "Dropbox" or name.startswith("Dropbox ("):
+                found.append((str(child), "Dropbox"))
+            elif name in ("Google Drive", "My Drive"):
+                found.append((str(child), "Google Drive"))
+            elif name in ("iCloudDrive", "iCloud Drive"):
+                found.append((str(child), "iCloud Drive"))
+            elif name == "Box":
+                found.append((str(child), "Box"))
+    except OSError:
+        pass
+    if IS_MAC:
+        found.append((str(home / "Library" / "Mobile Documents"), "iCloud Drive"))
+        cs = home / "Library" / "CloudStorage"
+        if cs.is_dir():
+            for child in cs.iterdir():
+                found.append((str(child), child.name.split("-")[0] or "Đám mây"))
+    return [(_norm(p), label) for p, label in found]
+
+
+def cloud_name(path: str | os.PathLike) -> str | None:
+    """The sync service a file belongs to (OneDrive, Dropbox…), or None."""
+    p = _norm(path)
+    for root, label in cloud_roots():
+        if p == root or p.startswith(root + os.sep):
+            return label
+    return None
+
+
+def protection_reason(path: str | os.PathLike) -> str | None:
+    """Why the app must not move or delete ``path``; None if it may.
 
     Both the path as given and its fully resolved form are checked, so a
     symlink or junction that leads into a system folder cannot be used to
@@ -84,15 +200,111 @@ def is_protected(path: str | os.PathLike) -> bool:
     try:
         candidates.add(_norm(os.path.realpath(path)))
     except (OSError, ValueError):
-        return True
+        return "Không xác định được vị trí thật của file"
     for p in candidates:
         # Never touch a drive/volume root itself.
         if os.path.dirname(p) == p:
-            return True
+            return "Thư mục gốc của ổ đĩa"
         for root in roots:
             if p == root or p.startswith(root + os.sep):
-                return True
-    return False
+                return "Thư mục hệ thống/chương trình được bảo vệ"
+        pkg = package_reason(p)
+        if pkg:
+            return f"Nằm trong {pkg}: dọn riêng một file sẽ làm hỏng cả gói"
+    return None
+
+
+def file_flags(path: str | os.PathLike) -> dict:
+    """What the UI needs to know before offering a file for cleanup."""
+    why = protection_reason(path)
+    return {"protected": why is not None, "why": why, "cloud": None if why else cloud_name(path)}
+
+
+def is_protected(path: str | os.PathLike) -> bool:
+    """True if ``path`` is, or lies inside, a protected folder or package."""
+    return protection_reason(path) is not None
+
+
+def volume_root(path: str | os.PathLike) -> str:
+    """The root of the drive/volume holding ``path`` (C:\\, D:\\, /Volumes/USB, /)."""
+    p = os.path.abspath(os.fspath(path))
+    if IS_WINDOWS:
+        drive = os.path.splitdrive(p)[0]
+        return drive + "\\" if drive else p
+    while not os.path.ismount(p):
+        parent = os.path.dirname(p)
+        if parent == p:
+            break
+        p = parent
+    return p
+
+
+def _device(path: str) -> int | None:
+    try:
+        return os.stat(path).st_dev
+    except OSError:
+        return None
+
+
+def quarantine_dir_for(path: str | os.PathLike) -> Path:
+    """Quarantine folder on the same drive as ``path``.
+
+    Moving a file within one drive is a rename: instant, atomic, and it needs no
+    extra space. Files on the system drive go to the app's data folder; files on
+    other drives go to a hidden folder at that drive's root.
+    """
+    folder = os.path.dirname(os.path.abspath(os.fspath(path)))
+    home_q = quarantine_dir()
+    dev = _device(folder)
+    if dev is not None and dev == _device(str(home_q)):
+        return home_q
+    q = Path(volume_root(folder)) / VOLUME_QUARANTINE
+    q.mkdir(exist_ok=True)
+    if IS_WINDOWS:
+        try:
+            import ctypes
+
+            ctypes.windll.kernel32.SetFileAttributesW(str(q), 0x2)  # hidden
+        except Exception:  # noqa: BLE001 - cosmetic only
+            pass
+    return q
+
+
+_lock_handle = None
+
+
+def acquire_instance_lock() -> bool:
+    """Make sure only one copy of the app (window or scheduled run) works at a time.
+
+    Returns False if another copy holds the lock. The lock is released by the
+    operating system when this process ends, even after a crash.
+    """
+    global _lock_handle
+    if _lock_handle is not None:
+        return True
+    f = open(data_dir() / "app.lock", "a+")
+    try:
+        if IS_WINDOWS:
+            import msvcrt
+
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return False
+    _lock_handle = f
+    return True
+
+
+def release_instance_lock() -> None:
+    global _lock_handle
+    if _lock_handle is not None:
+        _lock_handle.close()
+        _lock_handle = None
 
 
 # Virtual or system-managed trees that the scanner skips entirely.
