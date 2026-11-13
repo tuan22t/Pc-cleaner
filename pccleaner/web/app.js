@@ -4,7 +4,7 @@ try { sessionStorage.setItem("pcc_token", TOKEN); } catch (e) {}
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const COLORS = ["--c1", "--c2", "--c3", "--c5", "--c6", "--c7", "--c4", "--c8"].map((v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim());
-const SELECTABLE = { large: "File lớn", old: "File cũ", dups: "File trùng lặp", similar: "Ảnh giống nhau" };
+const SELECTABLE = { large: "File lớn", old: "File cũ", dups: "File trùng lặp", similar: "Ảnh giống nhau" }; // log reasons; shown through t()
 
 const state = {
   scanId: null, dirId: 0, view: "home", info: null,
@@ -16,7 +16,7 @@ const state = {
 };
 
 async function api(path, body) {
-  const opt = { headers: { "X-Token": TOKEN } };
+  const opt = { headers: { "X-Token": TOKEN, "X-Lang": I18N.lang } };
   if (body !== undefined) { opt.method = "POST"; opt.body = JSON.stringify(body); opt.headers["Content-Type"] = "application/json"; }
   const r = await fetch("/api/" + path, opt);
   const data = await r.json().catch(() => ({}));
@@ -28,28 +28,28 @@ function fmt(n) {
   if (n == null) return "";
   const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0;
   while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
-  return (i ? n.toFixed(n < 10 ? 1 : 0).replace(".", ",") : n) + " " + u[i];
+  return (i ? n.toLocaleString(I18N.locale, { maximumFractionDigits: n < 10 ? 1 : 0 }) : n) + " " + u[i];
 }
-const num = (n) => Number(n || 0).toLocaleString("vi-VN");
-const fmtDate = (t) => new Date(t * 1000).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" });
-const fmtDay = (t) => new Date(t * 1000).toLocaleDateString("vi-VN");
-function ago(t) {
-  const d = (Date.now() / 1000 - t) / 86400;
-  if (d < 1) return "hôm nay"; if (d < 30) return Math.floor(d) + " ngày trước";
-  if (d < 365) return Math.floor(d / 30) + " tháng trước"; return Math.floor(d / 365) + " năm trước";
+const num = (n) => Number(n || 0).toLocaleString(I18N.locale);
+const fmtDate = (ts) => new Date(ts * 1000).toLocaleString(I18N.locale, { dateStyle: "short", timeStyle: "short" });
+const fmtDay = (ts) => new Date(ts * 1000).toLocaleDateString(I18N.locale);
+function ago(ts) {
+  const d = (Date.now() / 1000 - ts) / 86400;
+  if (d < 1) return t("hôm nay"); if (d < 30) return t("{0} ngày trước", Math.floor(d));
+  if (d < 365) return t("{0} tháng trước", Math.floor(d / 30)); return t("{0} năm trước", Math.floor(d / 365));
 }
-function dur(s) { s = Math.round(s); return s < 60 ? s + " giây" : Math.floor(s / 60) + " phút " + (s % 60) + " giây"; }
+function dur(s) { s = Math.round(s); return s < 60 ? t("{0} giây", s) : t("{0} phút {1} giây", Math.floor(s / 60), s % 60); }
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 function toast(msg, opts = {}) {
-  const t = $("#toast"); $("#toastMsg").textContent = msg;
-  t.className = "toast" + (opts.err ? " err" : "");
+  const box = $("#toast"); $("#toastMsg").textContent = msg;
+  box.className = "toast" + (opts.err ? " err" : "");
   const b = $("#toastAct");
-  if (opts.action) { b.textContent = opts.action; b.classList.remove("hidden"); b.onclick = () => { t.classList.add("hidden"); opts.onAction(); }; }
+  if (opts.action) { b.textContent = opts.action; b.classList.remove("hidden"); b.onclick = () => { box.classList.add("hidden"); opts.onAction(); }; }
   else b.classList.add("hidden");
-  clearTimeout(t._h); t._h = setTimeout(() => t.classList.add("hidden"), opts.action ? 10000 : 5000);
+  clearTimeout(box._h); box._h = setTimeout(() => box.classList.add("hidden"), opts.action ? 10000 : 5000);
 }
-function dialog(title, html, ok = "Đồng ý", cancel = "Hủy", alt = null) {
+function dialog(title, html, ok = t("Đồng ý"), cancel = t("Hủy"), alt = null) {
   return new Promise((res) => {
     $("#modalTitle").textContent = title; $("#modalBody").innerHTML = html;
     $("#modalOk").textContent = ok; $("#modalCancel").textContent = cancel || "";
@@ -103,24 +103,24 @@ async function renderHome() {
     const pct = l.total ? (l.used / l.total) * 100 : 0;
     const isHome = l.path === info.home;
     return `<div class="card ${isHome ? "recommended" : ""}">
-      ${isHome ? '<span class="ribbon">Nên bắt đầu ở đây</span>' : ""}
+      ${isHome ? `<span class="ribbon">${t("Nên bắt đầu ở đây")}</span>` : ""}
       <h3>${isHome ? "👤" : "💽"} ${esc(l.label)}</h3><div class="path">${esc(l.path)}</div>
       <div class="meter ${pct > 90 ? "high" : pct > 75 ? "mid" : ""}"><div style="width:${pct.toFixed(1)}%"></div></div>
-      <div class="free">Còn trống <b>${fmt(l.free)}</b> <span class="muted">/ ${fmt(l.total)}</span></div>
-      ${pct > 90 ? '<div class="warn-text">⚠️ Ổ đĩa sắp đầy</div>' : ""}
-      <button class="btn ${isHome ? "primary" : ""}" data-scan="${esc(l.path)}">Quét ${isHome ? "thư mục này" : "ổ này"}</button>
-      ${isHome ? "" : '<div class="hint">Quét cả ổ có thể mất vài phút.</div>'}</div>`;
+      <div class="free">${t("Còn trống <b>{0}</b>", fmt(l.free))} <span class="muted">/ ${fmt(l.total)}</span></div>
+      ${pct > 90 ? `<div class="warn-text">⚠️ ${t("Ổ đĩa sắp đầy")}</div>` : ""}
+      <button class="btn ${isHome ? "primary" : ""}" data-scan="${esc(l.path)}">${isHome ? t("Quét thư mục này") : t("Quét ổ này")}</button>
+      ${isHome ? "" : `<div class="hint">${t("Quét cả ổ có thể mất vài phút.")}</div>`}</div>`;
   }).join("");
   $$("[data-scan]").forEach((b) => b.onclick = () => startScan(b.dataset.scan));
   await loadScans();
   const scans = await api("scans");
   $("#recentScans").innerHTML = scans.length ? `<div class="list">${scans.map((s) => `
-    <div class="row"><span class="ico">🗂️</span><div class="name"><div class="t">${esc(s.root)}</div><div class="p">Quét lúc ${fmtDate(s.finished)} · ${num(s.file_count)} file${s.error_count ? ` · bỏ qua ${num(s.error_count)} mục không có quyền đọc` : ""}</div></div>
-    <div class="size">${fmt(s.total_size)}</div><button class="btn small" data-open="${s.id}">Xem báo cáo</button></div>`).join("")}</div>`
-    : `<div class="list"><div class="empty">Chưa quét lần nào. Hãy bấm “Quét” ở một ô phía trên.</div></div>`;
+    <div class="row"><span class="ico">🗂️</span><div class="name"><div class="t">${esc(s.root)}</div><div class="p">${t("Quét lúc {0} · {1} {1|file|files}", fmtDate(s.finished), num(s.file_count))}${s.error_count ? " · " + t("bỏ qua {0} mục không có quyền đọc", num(s.error_count)) : ""}</div></div>
+    <div class="size">${fmt(s.total_size)}</div><button class="btn small" data-open="${s.id}">${t("Xem báo cáo")}</button></div>`).join("")}</div>`
+    : `<div class="list"><div class="empty">${t("Chưa quét lần nào. Hãy bấm “Quét” ở một ô phía trên.")}</div></div>`;
   $$("[data-open]").forEach((b) => b.onclick = () => { selectScan(+b.dataset.open); show("usage"); });
 }
-$("#customScanBtn").onclick = () => { const p = $("#customPath").value.trim(); if (p) startScan(p); else { toast("Hãy nhập đường dẫn thư mục trước."); $("#customPath").focus(); } };
+$("#customScanBtn").onclick = () => { const p = $("#customPath").value.trim(); if (p) startScan(p); else { toast(t("Hãy nhập đường dẫn thư mục trước.")); $("#customPath").focus(); } };
 $("#customPath").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#customScanBtn").click(); });
 $("#pickFolderBtn").onclick = async () => {
   try { const r = await api("pick-folder", {}); if (r.path) startScan(r.path); } catch (e) { toast(e.message, { err: true }); }
@@ -128,7 +128,7 @@ $("#pickFolderBtn").onclick = async () => {
 
 async function loadScans() {
   const scans = await api("scans");
-  $("#scanSelect").innerHTML = scans.length ? scans.map((s) => `<option value="${s.id}">${esc(s.root)} (${fmtDay(s.finished)})</option>`).join("") : `<option value="">Chưa có</option>`;
+  $("#scanSelect").innerHTML = scans.length ? scans.map((s) => `<option value="${s.id}">${esc(s.root)} (${fmtDay(s.finished)})</option>`).join("") : `<option value="">${t("Chưa có")}</option>`;
   if (scans.length && !scans.find((s) => s.id === state.scanId)) state.scanId = scans[0].id;
   if (state.scanId) $("#scanSelect").value = state.scanId;
   updateNav();
@@ -150,7 +150,7 @@ function runAction(endpoint, body) {
     pollJob();
   });
 }
-const stopped = (r) => (r && r.cancelled ? " Đã dừng giữa chừng theo yêu cầu: phần chưa làm vẫn giữ nguyên." : "");
+const stopped = (r) => (r && r.cancelled ? " " + t("Đã dừng giữa chừng theo yêu cầu: phần chưa làm vẫn giữ nguyên.") : "");
 function pollJob() {
   clearInterval(state.polling);
   const tick = async () => {
@@ -163,15 +163,15 @@ function pollJob() {
       bar.classList.remove("hidden");
       const p = j.progress || {}; const el = dur(Date.now() / 1000 - j.started);
       if (j.kind === "scan") {
-        $("#jobTitle").textContent = `Đang quét ${j.root} — đã tìm thấy ${num(p.files)} file (${fmt(p.bytes || 0)})`;
+        $("#jobTitle").textContent = t("Đang quét {0} — đã tìm thấy {1} {1|file|files} ({2})", j.root, num(p.files), fmt(p.bytes || 0));
         $("#jobDetail").textContent = `${el} · ${p.current || ""}`;
         $(".progress").classList.add("indeterminate"); $("#jobProgress").style.width = "30%";
       } else {
         const pct = p.total ? Math.floor(100 * p.done / p.total) : 0;
-        const what = { duplicates: "Đang tìm file trùng", similar: "Đang tìm ảnh giống nhau", junk: "Đang kiểm tra rác hệ thống" }[j.kind] || "";
-        const stage = j.kind === "action" ? (p.stage || j.label || "Đang xử lý") : `${what}: ${p.stage || ""}`;
+        const what = { duplicates: t("Đang tìm file trùng"), similar: t("Đang tìm ảnh giống nhau"), junk: t("Đang kiểm tra rác hệ thống") }[j.kind] || "";
+        const stage = j.kind === "action" ? (p.stage || j.label || t("Đang xử lý")) : `${what}: ${p.stage || ""}`;
         $("#jobTitle").textContent = `${stage}${p.total ? ` (${pct}%)` : ""}`;
-        $("#jobDetail").textContent = `${el}${p.total ? ` · ${num(p.done)}/${num(p.total)} file` : ""}`;
+        $("#jobDetail").textContent = `${el}${p.total ? " · " + t("{0}/{1} {1|file|files}", num(p.done), num(p.total)) : ""}`;
         $(".progress").classList.toggle("indeterminate", !p.total);
         $("#jobProgress").style.width = p.total ? pct + "%" : "30%";
       }
@@ -182,16 +182,16 @@ function pollJob() {
     state.lastJob = j.started;
     if (j.kind === "action") {
       const w = state.actionWaiter; state.actionWaiter = null;
-      if (w) { j.state === "done" ? w.resolve(j.result) : w.reject(new Error(j.state === "error" ? j.error : "Đã dừng lại.")); }
-      else if (j.state === "done") { toast("Thao tác chạy nền đã xong." + stopped(j.result)); refreshBadge(); render(state.view); }
+      if (w) { j.state === "done" ? w.resolve(j.result) : w.reject(new Error(j.state === "error" ? j.error : t("Đã dừng lại."))); }
+      else if (j.state === "done") { toast(t("Thao tác chạy nền đã xong.") + stopped(j.result)); refreshBadge(); render(state.view); }
       return;
     }
-    if (j.state === "done" && j.kind === "scan") { await loadScans(); selectScan(j.result); toast("Quét xong. Đây là các thư mục chiếm nhiều chỗ nhất."); show("usage"); }
-    else if (j.state === "done" && j.kind === "duplicates") { toast(j.result ? `Tìm thấy ${j.result} nhóm file trùng.` : "Không có file trùng nào. Máy anh/chị khá gọn!"); if (state.view === "dups") renderDups(); }
-    else if (j.state === "done" && j.kind === "similar") { toast(j.result ? `Tìm thấy ${j.result} nhóm ảnh giống nhau.` : "Không có ảnh nào giống nhau."); if (state.view === "similar") renderSimilar(); }
+    if (j.state === "done" && j.kind === "scan") { await loadScans(); selectScan(j.result); toast(t("Quét xong. Đây là các thư mục chiếm nhiều chỗ nhất.")); show("usage"); }
+    else if (j.state === "done" && j.kind === "duplicates") { toast(j.result ? t("Tìm thấy {0} {0|nhóm|nhóm} file trùng.", j.result) : t("Không có file trùng nào. Máy anh/chị khá gọn!")); if (state.view === "dups") renderDups(); }
+    else if (j.state === "done" && j.kind === "similar") { toast(j.result ? t("Tìm thấy {0} {0|nhóm|nhóm} ảnh giống nhau.", j.result) : t("Không có ảnh nào giống nhau.")); if (state.view === "similar") renderSimilar(); }
     else if (j.state === "done" && j.kind === "junk") { state.junk = j.result; renderJunk(); }
-    else if (j.state === "cancelled") toast("Đã dừng lại.");
-    else if (j.state === "error") toast("Có lỗi: " + j.error, { err: true });
+    else if (j.state === "cancelled") toast(t("Đã dừng lại."));
+    else if (j.state === "error") toast(t("Có lỗi: {0}", j.error), { err: true });
   };
   tick(); state.polling = setInterval(tick, 400);
 }
@@ -204,7 +204,7 @@ function squarify(items, x, y, w, h) {
     const short = Math.min(w, h); let row = [], best = Infinity;
     for (const r of rest) {
       const test = [...row, r]; const s = test.reduce((a, b) => a + b.a, 0);
-      const worst = Math.max(...test.map((t) => Math.max((short * short * t.a) / (s * s), (s * s) / (short * short * t.a))));
+      const worst = Math.max(...test.map((q) => Math.max((short * short * q.a) / (s * s), (s * s) / (short * short * q.a))));
       if (worst > best) break; best = worst; row = test;
     }
     rest = rest.slice(row.length);
@@ -218,27 +218,27 @@ function squarify(items, x, y, w, h) {
   }
   return out;
 }
-const revealBtn = (p) => `<button class="btn small ghost" data-reveal="${esc(p)}" title="Mở thư mục chứa file này trong ${state.info && state.info.platform === "mac" ? "Finder" : "File Explorer"}">📂 Xem vị trí</button>`;
+const revealBtn = (p) => `<button class="btn small ghost" data-reveal="${esc(p)}" title="${t("Mở thư mục chứa file này trong {0}", state.info && state.info.platform === "mac" ? "Finder" : "File Explorer")}">📂 ${t("Xem vị trí")}</button>`;
 
 async function renderUsage() {
   const d = await api(`scan/${state.scanId}/children?dir=${state.dirId}`);
-  $("#crumbs").innerHTML = (d.crumbs.length > 1 ? `<a data-dir="${d.crumbs[d.crumbs.length - 2].id}" class="back">← Quay lại</a>` : "") +
+  $("#crumbs").innerHTML = (d.crumbs.length > 1 ? `<a data-dir="${d.crumbs[d.crumbs.length - 2].id}" class="back">← ${t("Quay lại")}</a>` : "") +
     d.crumbs.map((c, i) => (i ? '<span class="sep">›</span>' : "") + `<a data-dir="${c.id}">${esc(c.name)}</a>`).join("") +
-    ` <span class="muted">· tổng ${fmt(d.dir.size)} · ${num(d.dir.count)} file</span>`;
+    ` <span class="muted">· ${t("tổng {0} · {1} {1|file|files}", fmt(d.dir.size), num(d.dir.count))}</span>`;
   const total = d.dir.size || 1;
-  $("#usageList").innerHTML = `<div class="row head"><span class="ico"></span><div class="name">Tên</div><div class="bar-h">Tỉ lệ</div><div class="size">Dung lượng</div><div class="acts"></div></div>` +
+  $("#usageList").innerHTML = `<div class="row head"><span class="ico"></span><div class="name">${t("Tên")}</div><div class="bar-h">${t("Tỉ lệ")}</div><div class="size">${t("Dung lượng")}</div><div class="acts"></div></div>` +
     (d.items.length ? d.items.map((it) => `
-    <div class="row ${it.type}" ${it.type === "dir" ? `data-dir="${it.id}" title="Bấm để xem bên trong"` : ""}>
+    <div class="row ${it.type}" ${it.type === "dir" ? `data-dir="${it.id}" title="${t("Bấm để xem bên trong")}"` : ""}>
       <span class="ico">${it.type === "dir" ? "📁" : "📄"}</span>
-      <div class="name"><div class="t">${esc(it.name)}</div>${it.type === "dir" ? `<div class="p">${num(it.count)} file</div>` : `<div class="p">sửa ${ago(it.mtime)}</div>`}</div>
-      <div class="bar" title="${Math.round(100 * it.size / total)}% của thư mục hiện tại"><div style="width:${(100 * it.size / total).toFixed(1)}%"></div></div>
+      <div class="name"><div class="t">${esc(it.name)}</div>${it.type === "dir" ? `<div class="p">${t("{0} {0|file|files}", num(it.count))}</div>` : `<div class="p">${t("sửa {0}", ago(it.mtime))}</div>`}</div>
+      <div class="bar" title="${t("{0}% của thư mục hiện tại", Math.round(100 * it.size / total))}"><div style="width:${(100 * it.size / total).toFixed(1)}%"></div></div>
       <div class="size">${fmt(it.size)}</div>
       <div class="acts">${revealBtn(it.path)}</div>
-    </div>`).join("") : `<div class="empty">Thư mục này trống.</div>`);
+    </div>`).join("") : `<div class="empty">${t("Thư mục này trống.")}</div>`);
   const tm = $("#treemap"); const W = tm.clientWidth, H = tm.clientHeight;
   const tiles = squarify(d.items.filter((i) => i.size > 0).slice(0, 40), 0, 0, W, H);
-  tm.innerHTML = tiles.map((t, i) => `<div class="tile ${t.it.type}" ${t.it.type === "dir" ? `data-dir="${t.it.id}"` : ""} title="${esc(t.it.name)} · ${fmt(t.it.size)}"
-     style="left:${t.x}px;top:${t.y}px;width:${t.w}px;height:${t.h}px;background:${COLORS[i % COLORS.length]}">${t.w > 60 && t.h > 30 ? `${t.it.type === "dir" ? "📁 " : ""}${esc(t.it.name)}<small>${fmt(t.it.size)}</small>` : ""}</div>`).join("");
+  tm.innerHTML = tiles.map((tl, i) => `<div class="tile ${tl.it.type}" ${tl.it.type === "dir" ? `data-dir="${tl.it.id}"` : ""} title="${esc(tl.it.name)} · ${fmt(tl.it.size)}"
+     style="left:${tl.x}px;top:${tl.y}px;width:${tl.w}px;height:${tl.h}px;background:${COLORS[i % COLORS.length]}">${tl.w > 60 && tl.h > 30 ? `${tl.it.type === "dir" ? "📁 " : ""}${esc(tl.it.name)}<small>${fmt(tl.it.size)}</small>` : ""}</div>`).join("");
   $$("#view-usage [data-dir]").forEach((el) => el.addEventListener("click", (e) => { if (e.target.closest("button")) return; state.dirId = +el.dataset.dir; renderUsage(); }));
   bindReveal("#view-usage");
 }
@@ -248,19 +248,19 @@ function bindReveal(scope) {
 
 // ---------- selectable file lists ----------
 // Why a file cannot be offered for cleanup, and the cloud service a file syncs with.
-const lockAttr = (f) => f.protected ? `title="${esc(f.why || "Được bảo vệ, ứng dụng không cho phép dọn.")}"` : "";
-const lockTag = (f) => `<span class="tag keep" ${lockAttr(f)}>${f.why && !/hệ thống/i.test(f.why) ? "Được bảo vệ" : "Hệ thống"}</span>`;
-const cloudTag = (f) => f.cloud ? ` <span class="tag warn-tag" title="Dọn file này sẽ xóa nó khỏi ${esc(f.cloud)} trên mọi thiết bị.">☁ ${esc(f.cloud)}</span>` : "";
+const lockAttr = (f) => f.protected ? `title="${esc(f.why || t("Được bảo vệ, ứng dụng không cho phép dọn."))}"` : "";
+const lockTag = (f) => `<span class="tag keep" ${lockAttr(f)}>${f.system ? t("Hệ thống") : t("Được bảo vệ")}</span>`;
+const cloudTag = (f) => f.cloud ? ` <span class="tag warn-tag" title="${t("Dọn file này sẽ xóa nó khỏi {0} trên mọi thiết bị.", esc(f.cloud))}">☁ ${esc(f.cloud)}</span>` : "";
 function noteCloud(f) { if (f.cloud) state.cloud.set(f.path, f.cloud); }
 function fileRows(list, key) {
   const sel = state.sel[key];
-  const head = `<div class="row head"><span class="cb"></span><div class="name">Tên file</div><span class="kind">Loại</span><span class="when">Sửa lần cuối</span><div class="size">Dung lượng</div><span class="acts"></span></div>`;
-  if (!list.length) return `<div class="empty">Không có file nào phù hợp. Thử chọn mức nhỏ hơn ở phía trên.</div>`;
+  const head = `<div class="row head"><span class="cb"></span><div class="name">${t("Tên file")}</div><span class="kind">${t("Loại")}</span><span class="when">${t("Sửa lần cuối")}</span><div class="size">${t("Dung lượng")}</div><span class="acts"></span></div>`;
+  if (!list.length) return `<div class="empty">${t("Không có file nào phù hợp. Thử chọn mức nhỏ hơn ở phía trên.")}</div>`;
   return head + list.map((f) => `
     ${noteCloud(f) || ""}<label class="row ${f.protected ? "locked" : "pick"}" ${lockAttr(f)}>
       <span class="cb">${f.protected ? "🔒" : `<input type="checkbox" data-sel="${key}" data-size="${f.size}" value="${esc(f.path)}" ${sel.has(f.path) ? "checked" : ""}>`}</span>
       <div class="name"><div class="t">${esc(f.name)}</div><div class="p">${esc(f.path)}</div></div>
-      <span class="kind">${f.protected ? lockTag(f) : `<span class="tag">${esc(f.category)}</span>`}${cloudTag(f)}</span>
+      <span class="kind">${f.protected ? lockTag(f) : `<span class="tag">${esc(t(f.category))}</span>`}${cloudTag(f)}</span>
       <span class="when" title="${fmtDay(f.mtime)}">${ago(f.mtime)}</span>
       <div class="size">${fmt(f.size)}</div>
       <span class="acts">${revealBtn(f.path)}</span>
@@ -282,9 +282,9 @@ function updateActionBar() {
   if (!key || !state.shown[key].length) { bar.classList.add("hidden"); return; }
   bar.classList.remove("hidden");
   const sel = state.sel[key]; let total = 0; sel.forEach((s) => total += s);
-  $("#selInfo").innerHTML = sel.size ? `Đã chọn <b>${num(sel.size)} file</b> · sẽ giải phóng <b>${fmt(total)}</b>` : `<span class="muted">Chưa chọn file nào</span>`;
+  $("#selInfo").innerHTML = sel.size ? t("Đã chọn <b>{0} {0|file|files}</b> · sẽ giải phóng <b>{1}</b>", num(sel.size), fmt(total)) : `<span class="muted">${t("Chưa chọn file nào")}</span>`;
   $("#selClean").disabled = !sel.size; $("#selClear").disabled = !sel.size;
-  $("#selClean").textContent = sel.size ? `🧹 Dọn ${num(sel.size)} file` : "🧹 Dọn các file đã chọn";
+  $("#selClean").textContent = "🧹 " + (sel.size ? t("Dọn {0} {0|file|files}", num(sel.size)) : t("Dọn các file đã chọn"));
   const all = state.shown[key];
   $("#selAll").checked = all.length > 0 && all.every((p) => sel.has(p));
   $("#selAll").indeterminate = !$("#selAll").checked && all.some((p) => sel.has(p));
@@ -311,10 +311,10 @@ $("#oldDays").onchange = $("#oldMin").onchange = renderOld;
 async function renderTypes() {
   const d = await api(`scan/${state.scanId}/summary`);
   const bars = (rows, label) => { const m = rows.length ? rows[0].size : 1; return rows.map((r, i) => `
-    <div class="b"><div>${esc(label(r))} <span class="muted">· ${num(r.count)} file</span></div>
+    <div class="b"><div>${esc(label(r))} <span class="muted">· ${t("{0} {0|file|files}", num(r.count))}</span></div>
     <div class="track"><div style="width:${(100 * r.size / m).toFixed(1)}%;background:${COLORS[i % COLORS.length]}"></div></div><div class="v">${fmt(r.size)}</div></div>`).join(""); };
-  $("#catList").innerHTML = bars(d.categories, (r) => r.category);
-  $("#extList").innerHTML = bars(d.extensions, (r) => (r.ext.startsWith("(") ? r.ext : "." + r.ext));
+  $("#catList").innerHTML = bars(d.categories, (r) => t(r.category));
+  $("#extList").innerHTML = bars(d.extensions, (r) => (r.ext.startsWith("(") ? t(r.ext) : "." + r.ext));
 }
 
 // ---------- duplicates ----------
@@ -325,8 +325,9 @@ async function renderDups() {
   const d = await api(`scan/${state.scanId}/duplicates`);
   const sel = state.sel.dups; sel.clear();
   $("#dupSummary").innerHTML = d.group_count
-    ? `Tìm thấy <b>${num(d.group_count)} nhóm</b> file trùng, dọn bản thừa sẽ giải phóng khoảng <b>${fmt(d.wasted)}</b>.<br><span class="muted">Ứng dụng đã tự chọn sẵn các bản thừa và giữ lại một bản, ưu tiên bản nằm ngoài Downloads/Desktop và không có chữ “copy” (có nhãn “Giữ lại”). Anh/chị có thể đổi lựa chọn.</span>`
-    : `<div class="empty">Chưa có kết quả. Bấm “Tìm file trùng” để bắt đầu.</div>`;
+    ? t("Tìm thấy <b>{0} nhóm</b> file trùng, dọn bản thừa sẽ giải phóng khoảng <b>{1}</b>.", num(d.group_count), fmt(d.wasted)) +
+      `<br><span class="muted">${t("Ứng dụng đã tự chọn sẵn các bản thừa và giữ lại một bản, ưu tiên bản nằm ngoài Downloads/Desktop và không có chữ “copy” (có nhãn “Giữ lại”). Anh/chị có thể đổi lựa chọn.")}</span>`
+    : `<div class="empty">${t("Chưa có kết quả. Bấm “Tìm file trùng” để bắt đầu.")}</div>`;
   $("#dupList").innerHTML = d.groups.map((g) => {
     let kept = false;
     const rows = g.files.map((f) => {
@@ -339,11 +340,11 @@ async function renderDups() {
       return `<label class="row ${f.protected || !f.exists ? "locked" : "pick"}" ${lockAttr(f)}>
         <span class="cb">${f.protected ? "🔒" : !f.exists ? "" : `<input type="checkbox" data-sel="dups" data-size="${g.size}" value="${esc(f.path)}" ${sel.has(f.path) ? "checked" : ""}>`}</span>
         <div class="name"><div class="t">${esc(name)}</div><div class="p">${esc(f.path)}</div></div>
-        <span class="kind">${keep ? '<span class="tag ok">✓ Giữ lại</span>' : f.protected ? lockTag(f) : !f.exists ? '<span class="tag">Đã dọn</span>' : '<span class="tag">Bản thừa</span>'}${cloudTag(f)}</span>
+        <span class="kind">${keep ? `<span class="tag ok">✓ ${t("Giữ lại")}</span>` : f.protected ? lockTag(f) : !f.exists ? `<span class="tag">${t("Đã dọn")}</span>` : `<span class="tag">${t("Bản thừa")}</span>`}${cloudTag(f)}</span>
         <span class="when">${ago(f.mtime)}</span>
         <span class="acts">${f.exists ? revealBtn(f.path) : ""}</span></label>`;
     }).join("");
-    return `<div class="group"><div class="group-head"><b>${g.files.length} bản giống hệt nhau</b><span>${fmt(g.size)} mỗi bản</span><span class="muted">thừa ${fmt(g.wasted)}</span></div>${rows}</div>`;
+    return `<div class="group"><div class="group-head"><b>${t("{0} bản giống hệt nhau", g.files.length)}</b><span>${t("{0} mỗi bản", fmt(g.size))}</span><span class="muted">${t("thừa {0}", fmt(g.wasted))}</span></div>${rows}</div>`;
   }).join("");
   bindSelection("#view-dups", "dups");
 }
@@ -355,25 +356,25 @@ $("#selClean").onclick = async () => {
   let total = 0; sel.forEach((s) => total += s);
   const cloudFiles = files.filter((f) => state.cloud.has(f));
   const cloudNames = [...new Set(cloudFiles.map((f) => state.cloud.get(f)))].join(", ");
-  const ok = await dialog(`Dọn ${num(files.length)} file (${fmt(total)})?`,
-    `<p>Các file này sẽ được chuyển vào <b>Khu cách ly</b>, <b>chưa bị xóa vĩnh viễn</b>. Nếu cần, anh/chị có thể lấy lại bất cứ lúc nào.</p>
-     ${cloudFiles.length ? `<div class="info warn">☁ <b>${num(cloudFiles.length)} file nằm trong ${esc(cloudNames)}.</b> Dọn chúng sẽ xóa chúng khỏi ${esc(cloudNames)} trên <b>mọi máy và điện thoại</b> đang đồng bộ. Lấy lại từ khu cách ly sẽ đưa chúng trở lại.</div>` : ""}
-     ${key === "dups" ? "<p class=\"muted\">Trước khi dọn, ứng dụng sẽ kiểm tra lại nội dung từng file và luôn giữ lại ít nhất một bản.</p>" : ""}
-     <div class="list small scroll">${files.slice(0, 50).map((f) => `<div class="row">${esc(f)}</div>`).join("")}${files.length > 50 ? `<div class="row muted">… và ${num(files.length - 50)} file khác</div>` : ""}</div>`,
-    "🧹 Dọn ngay");
+  const ok = await dialog(t("Dọn {0} {0|file|files} ({1})?", num(files.length), fmt(total)),
+    `<p>${t("Các file này sẽ được chuyển vào <b>Khu cách ly</b>, <b>chưa bị xóa vĩnh viễn</b>. Nếu cần, anh/chị có thể lấy lại bất cứ lúc nào.")}</p>
+     ${cloudFiles.length ? `<div class="info warn">☁ ${t("<b>{0} {0|file|files} nằm trong {1}.</b> Dọn chúng sẽ xóa chúng khỏi {1} trên <b>mọi máy và điện thoại</b> đang đồng bộ. Lấy lại từ khu cách ly sẽ đưa chúng trở lại.", num(cloudFiles.length), esc(cloudNames))}</div>` : ""}
+     ${key === "dups" ? `<p class="muted">${t("Trước khi dọn, ứng dụng sẽ kiểm tra lại nội dung từng file và luôn giữ lại ít nhất một bản.")}</p>` : ""}
+     <div class="list small scroll">${files.slice(0, 50).map((f) => `<div class="row">${esc(f)}</div>`).join("")}${files.length > 50 ? `<div class="row muted">${t("… và {0} file khác", num(files.length - 50))}</div>` : ""}</div>`,
+    "🧹 " + t("Dọn ngay"));
   if (!ok) return;
   try {
-    const body = { paths: files, reason: SELECTABLE[key], allow_cloud: cloudFiles.length > 0 };
+    const body = { paths: files, reason: SELECTABLE[key], allow_cloud: cloudFiles.length > 0 }; // stored in Vietnamese, shown with t()
     if (key === "dups") body.dup_scan_id = state.scanId;
     if (key === "similar") body.similar_scan_id = state.scanId;
     const r = await runAction("quarantine", body);
     sel.clear(); refreshBadge();
     if (r.failed.length) {
-      await dialog(r.moved ? `Đã dọn ${num(r.moved)} file, ${num(r.failed.length)} file được giữ nguyên` : "Không dọn được file nào",
-        `<p>${r.moved ? `Đã chuyển ${fmt(r.bytes)} vào khu cách ly. ` : ""}Những file dưới đây được giữ nguyên:</p>
-         <div class="list small scroll">${r.failed.map((f) => `<div class="row"><div class="name"><div class="t">${esc(f.path)}</div><div class="p">${esc(f.error)}</div></div></div>`).join("")}</div>`, "Đã hiểu", null);
+      await dialog(r.moved ? t("Đã dọn {0} {0|file|files}, {1} {1|file|files} được giữ nguyên", num(r.moved), num(r.failed.length)) : t("Không dọn được file nào"),
+        `<p>${r.moved ? t("Đã chuyển {0} vào khu cách ly.", fmt(r.bytes)) + " " : ""}${t("Những file dưới đây được giữ nguyên:")}</p>
+         <div class="list small scroll">${r.failed.map((f) => `<div class="row"><div class="name"><div class="t">${esc(f.path)}</div><div class="p">${esc(f.error)}</div></div></div>`).join("")}</div>`, t("Đã hiểu"), null);
     }
-    if (r.moved) toast(`Đã dọn ${num(r.moved)} file (${fmt(r.bytes)}).` + stopped(r), { action: "↩ Hoàn tác", onAction: () => undo(r.batch_id) });
+    if (r.moved) toast(t("Đã dọn {0} {0|file|files} ({1}).", num(r.moved), fmt(r.bytes)) + stopped(r), { action: "↩ " + t("Hoàn tác"), onAction: () => undo(r.batch_id) });
     else if (r.cancelled) toast(stopped(r));
     render(state.view);
   } catch (e) { toast(e.message, { err: true }); }
@@ -381,9 +382,9 @@ $("#selClean").onclick = async () => {
 async function undo(batchId) {
   try {
     const r = await runAction("restore", Array.isArray(batchId) ? { batch_ids: batchId } : { batch_id: batchId });
-    toast(`Đã trả ${num(r.restored)} file về chỗ cũ.` + (r.failed.length ? ` ${num(r.failed.length)} file không trả về được.` : "") +
-      (r.renamed && r.renamed.length ? ` ${num(r.renamed.length)} file đã có file mới cùng tên nên được trả về với tên thêm "(khôi phục)".` : "") +
-      (r.cancelled ? " Đã dừng giữa chừng: bấm Lấy lại lần nữa để trả nốt." : ""), { err: r.failed.length > 0 });
+    toast(t("Đã trả {0} {0|file|files} về chỗ cũ.", num(r.restored)) + (r.failed.length ? " " + t("{0} {0|file|files} không trả về được.", num(r.failed.length)) : "") +
+      (r.renamed && r.renamed.length ? " " + t("{0} {0|file|files} đã có file mới cùng tên nên được trả về với tên thêm \"(khôi phục)\".", num(r.renamed.length)) : "") +
+      (r.cancelled ? " " + t("Đã dừng giữa chừng: bấm Lấy lại lần nữa để trả nốt.") : ""), { err: r.failed.length > 0 });
     refreshBadge(); render(state.view);
   } catch (e) { toast(e.message, { err: true }); }
 }
@@ -400,23 +401,23 @@ async function renderQuarantine() {
   const visible = batches.filter((b) => b.files > 0);
   const pendingFiles = visible.filter((b) => !b.moves).reduce((a, b) => a + (b.pending || 0), 0);
   const pendingBytes = visible.filter((b) => b.pending && !b.moves).reduce((a, b) => a + (b.bytes || 0), 0);
-  $("#qSummary").innerHTML = pendingFiles ? `Đang cất giữ <b>${num(pendingFiles)} file</b> (khoảng ${fmt(pendingBytes)}).` : "";
-  $("#batchList").innerHTML = visible.length ? `<div class="row head"><div class="name">Lần dọn</div><span class="kind">Trạng thái</span><div class="size">Dung lượng</div><span class="acts2"></span></div>` + visible.map((b) => `
-    <div class="row"><div class="name"><div class="t">${esc(b.reason || "Dọn dẹp")} · ${num(b.files)} file</div><div class="p">${fmtDate(b.ts)}</div></div>
-    <span class="kind"><span class="tag ${b.pending ? "" : "ok"}">${b.moves ? (b.pending ? "Đã sắp xếp" : "Đã hoàn tác") : b.pending ? "Đang cất giữ" : b.purged ? "Đã xóa vĩnh viễn" : "Đã lấy lại"}</span></span>
+  $("#qSummary").innerHTML = pendingFiles ? t("Đang cất giữ <b>{0} {0|file|files}</b> (khoảng {1}).", num(pendingFiles), fmt(pendingBytes)) : "";
+  $("#batchList").innerHTML = visible.length ? `<div class="row head"><div class="name">${t("Lần dọn")}</div><span class="kind">${t("Trạng thái")}</span><div class="size">${t("Dung lượng")}</div><span class="acts2"></span></div>` + visible.map((b) => `
+    <div class="row"><div class="name"><div class="t">${esc(b.reason ? t(b.reason) : t("Dọn dẹp"))} · ${t("{0} {0|file|files}", num(b.files))}</div><div class="p">${fmtDate(b.ts)}</div></div>
+    <span class="kind"><span class="tag ${b.pending ? "" : "ok"}">${b.moves ? (b.pending ? t("Đã sắp xếp") : t("Đã hoàn tác")) : b.pending ? t("Đang cất giữ") : b.purged ? t("Đã xóa vĩnh viễn") : t("Đã lấy lại")}</span></span>
     <div class="size">${fmt(b.bytes)}</div>
-    <span class="acts2">${b.pending && b.moves ? `<button class="btn small primary" data-restore="${b.batch_id}">↩ Hoàn tác</button>` : b.pending ? `<button class="btn small primary" data-restore="${b.batch_id}">↩ Lấy lại</button>
-    <button class="btn small ghost danger-text" data-purge="${b.batch_id}">Xóa vĩnh viễn</button>` : ""}</span></div>`).join("")
-    : `<div class="empty">Khu cách ly đang trống. Các file anh/chị dọn sẽ xuất hiện ở đây.</div>`;
-  const kinds = { quarantine: "Đã dọn", restore: "Lấy lại", purge: "Xóa vĩnh viễn", error: "Giữ nguyên", move: "Sắp xếp" };
+    <span class="acts2">${b.pending && b.moves ? `<button class="btn small primary" data-restore="${b.batch_id}">↩ ${t("Hoàn tác")}</button>` : b.pending ? `<button class="btn small primary" data-restore="${b.batch_id}">↩ ${t("Lấy lại")}</button>
+    <button class="btn small ghost danger-text" data-purge="${b.batch_id}">${t("Xóa vĩnh viễn")}</button>` : ""}</span></div>`).join("")
+    : `<div class="empty">${t("Khu cách ly đang trống. Các file anh/chị dọn sẽ xuất hiện ở đây.")}</div>`;
+  const kinds = { quarantine: t("Đã dọn"), restore: t("Lấy lại"), purge: t("Xóa vĩnh viễn"), error: t("Giữ nguyên"), move: t("Sắp xếp") };
   $("#logList").innerHTML = log.length ? log.map((a) => `<div class="row"><span class="when">${fmtDate(a.ts)}</span>
     <span class="tag ${a.kind === "error" ? "keep" : ""}">${kinds[a.kind] || a.kind}</span><div class="name"><div class="t">${esc(a.path)}</div>${a.kind === "error" ? `<div class="p">${esc(a.reason || "")}</div>` : ""}</div><div class="size">${a.size ? fmt(a.size) : ""}</div></div>`).join("")
-    : `<div class="empty">Chưa có thao tác nào.</div>`;
+    : `<div class="empty">${t("Chưa có thao tác nào.")}</div>`;
   $$("[data-restore]").forEach((b) => b.onclick = () => undo(b.dataset.restore));
   $$("[data-purge]").forEach((b) => b.onclick = async () => {
-    if (!(await dialog("Xóa vĩnh viễn lần dọn này?", "<p>Các file trong lần dọn này sẽ bị <b>xóa hẳn khỏi máy</b> và <b>không thể lấy lại</b>.</p>", "Xóa vĩnh viễn"))) return;
+    if (!(await dialog(t("Xóa vĩnh viễn lần dọn này?"), `<p>${t("Các file trong lần dọn này sẽ bị <b>xóa hẳn khỏi máy</b> và <b>không thể lấy lại</b>.")}</p>`, t("Xóa vĩnh viễn")))) return;
     const r = await runAction("purge", { batch_id: b.dataset.purge }).catch((e) => toast(e.message, { err: true }));
-    if (r) toast(`Đã giải phóng ${fmt(r.freed)}.`);
+    if (r) toast(t("Đã giải phóng {0}.", fmt(r.freed)));
     renderQuarantine();
   });
 }
@@ -430,20 +431,21 @@ async function renderSimilar() {
   const d = await api(`scan/${state.scanId}/similar`);
   const sel = state.sel.similar; sel.clear();
   $("#simSummary").innerHTML = d.group_count
-    ? `Tìm thấy <b>${num(d.group_count)} nhóm</b> ảnh giống nhau, dọn bớt có thể giải phóng khoảng <b>${fmt(d.saving)}</b>.<br><span class="muted">Ảnh có nhãn “Giữ lại” là ảnh nét nhất (độ phân giải cao nhất) của nhóm. Hãy xem kỹ ảnh trước khi dọn.</span>`
-    : `<div class="empty">Chưa có kết quả. Bấm “Tìm ảnh giống nhau” để bắt đầu.</div>`;
-  $("#simList").innerHTML = d.groups.map((g) => `<div class="group"><div class="group-head"><b>${g.files.length} ảnh giống nhau</b><span class="muted">dọn bớt được ${fmt(g.saving)}</span></div>
+    ? t("Tìm thấy <b>{0} nhóm</b> ảnh giống nhau, dọn bớt có thể giải phóng khoảng <b>{1}</b>.", num(d.group_count), fmt(d.saving)) +
+      `<br><span class="muted">${t("Ảnh có nhãn “Giữ lại” là ảnh nét nhất (độ phân giải cao nhất) của nhóm. Hãy xem kỹ ảnh trước khi dọn.")}</span>`
+    : `<div class="empty">${t("Chưa có kết quả. Bấm “Tìm ảnh giống nhau” để bắt đầu.")}</div>`;
+  $("#simList").innerHTML = d.groups.map((g) => `<div class="group"><div class="group-head"><b>${t("{0} ảnh giống nhau", g.files.length)}</b><span class="muted">${t("dọn bớt được {0}", fmt(g.saving))}</span></div>
     <div class="photo-grid">${g.files.map((f, i) => {
       const keep = i === 0 && f.exists;
       noteCloud(f);
       if (!keep && f.exists && !f.protected && !f.cloud) sel.set(f.path, f.size);
       const name = f.path.split(/[\\/]/).pop();
       return `<label class="photo ${keep ? "keep" : ""} ${!f.exists ? "gone" : ""}" title="${esc(f.why ? f.why + " · " + f.path : f.path)}">
-        <div class="ph-img">${f.exists ? `<img loading="lazy" src="${thumbUrl(f.path)}" alt="">` : "Đã dọn"}</div>
+        <div class="ph-img">${f.exists ? `<img loading="lazy" src="${thumbUrl(f.path)}" alt="">` : t("Đã dọn")}</div>
         <div class="ph-meta">${f.exists && !f.protected ? `<input type="checkbox" data-sel="similar" data-size="${f.size}" value="${esc(f.path)}" ${sel.has(f.path) ? "checked" : ""}>` : f.protected ? "🔒" : ""}
           <div class="name"><div class="t">${esc(name)}</div><div class="p">${f.width}×${f.height} · ${fmt(f.size)}${f.cloud ? ` · ☁ ${esc(f.cloud)}` : ""}</div></div></div>
-        ${keep ? '<span class="tag ok ph-tag">✓ Giữ lại</span>' : ""}
-        ${f.exists ? `<button class="btn small ghost ph-open" data-reveal="${esc(f.path)}" title="Xem vị trí">📂</button>` : ""}
+        ${keep ? `<span class="tag ok ph-tag">✓ ${t("Giữ lại")}</span>` : ""}
+        ${f.exists ? `<button class="btn small ghost ph-open" data-reveal="${esc(f.path)}" title="${t("Xem vị trí")}">📂</button>` : ""}
       </label>`;
     }).join("")}</div></div>`).join("");
   bindSelection("#view-similar", "similar");
@@ -454,23 +456,23 @@ $("#junkRun").onclick = async () => { try { await api("junk-scan", {}); pollJob(
 function renderJunk() {
   const list = state.junk;
   if (!list) {
-    $("#junkList").innerHTML = `<div class="empty">Bấm “Kiểm tra rác hệ thống” để xem máy đang có bao nhiêu rác. Việc kiểm tra chỉ đọc, chưa xóa gì.</div>`;
+    $("#junkList").innerHTML = `<div class="empty">${t("Bấm “Kiểm tra rác hệ thống” để xem máy đang có bao nhiêu rác. Việc kiểm tra chỉ đọc, chưa xóa gì.")}</div>`;
     $("#junkBar").classList.add("hidden"); $("#junkInfo").textContent = ""; return;
   }
   const total = list.reduce((a, c) => a + c.size, 0);
-  $("#junkInfo").innerHTML = `Tìm thấy tổng cộng <b>${fmt(total)}</b>`;
+  $("#junkInfo").innerHTML = t("Tìm thấy tổng cộng <b>{0}</b>", fmt(total));
   $("#junkList").innerHTML = list.map((c) => `
     <label class="row ${c.count ? "pick" : "locked"}">
       <span class="cb">${c.count ? `<input type="checkbox" data-junk="${c.id}" data-size="${c.size}" ${c.selected ? "checked" : ""}>` : ""}</span>
-      <div class="name"><div class="t">${esc(c.name)} ${c.label === "safe" ? '<span class="tag ok">An toàn</span>' : '<span class="tag warn-tag">Cân nhắc</span>'}${c.admin ? ' <span class="tag" title="Một số file cần quyền quản trị; file không đủ quyền sẽ được bỏ qua.">Cần quyền quản trị</span>' : ""}</div>
-        <div class="p wrap">${esc(c.desc)}</div></div>
-      <span class="when">${c.count ? num(c.count) + " file" : "Sạch"}</span>
+      <div class="name"><div class="t">${esc(t(c.name))} ${c.label === "safe" ? `<span class="tag ok">${t("An toàn")}</span>` : `<span class="tag warn-tag">${t("Cân nhắc")}</span>`}${c.admin ? ` <span class="tag" title="${t("Một số file cần quyền quản trị; file không đủ quyền sẽ được bỏ qua.")}">${t("Cần quyền quản trị")}</span>` : ""}</div>
+        <div class="p wrap">${esc(t(c.desc))}</div></div>
+      <span class="when">${c.count ? t("{0} {0|file|files}", num(c.count)) : t("Sạch")}</span>
       <div class="size">${c.count ? fmt(c.size) : "—"}</div>
-    </label>`).join("") || `<div class="empty">Không tìm thấy rác.</div>`;
+    </label>`).join("") || `<div class="empty">${t("Không tìm thấy rác.")}</div>`;
   const upd = () => {
     let n = 0, sz = 0; $$("[data-junk]:checked").forEach((c) => { n++; sz += +c.dataset.size; c.closest(".row").classList.add("checked"); });
     $$("[data-junk]:not(:checked)").forEach((c) => c.closest(".row").classList.remove("checked"));
-    $("#junkSel").innerHTML = n ? `Đã chọn <b>${n} mục</b> · khoảng <b>${fmt(sz)}</b>` : `<span class="muted">Chưa chọn mục nào</span>`;
+    $("#junkSel").innerHTML = n ? t("Đã chọn <b>{0} {0|mục|mục}</b> · khoảng <b>{1}</b>", n, fmt(sz)) : `<span class="muted">${t("Chưa chọn mục nào")}</span>`;
     $("#junkClean").disabled = !n;
   };
   $$("[data-junk]").forEach((c) => c.onchange = upd);
@@ -479,29 +481,29 @@ function renderJunk() {
 $("#junkClean").onclick = async () => {
   const ids = $$("[data-junk]:checked").map((c) => c.dataset.junk);
   if (!ids.length) return;
-  if (!(await dialog("Dọn rác hệ thống?", "<p>Các file sẽ được chuyển vào <b>Khu cách ly</b> (lấy lại được). File đang được chương trình khác sử dụng hoặc cần quyền quản trị sẽ được bỏ qua.</p><p class=\"muted\">Nên đóng trình duyệt trước khi dọn bộ nhớ đệm trình duyệt.</p>", "🧹 Dọn ngay"))) return;
+  if (!(await dialog(t("Dọn rác hệ thống?"), `<p>${t("Các file sẽ được chuyển vào <b>Khu cách ly</b> (lấy lại được). File đang được chương trình khác sử dụng hoặc cần quyền quản trị sẽ được bỏ qua.")}</p><p class="muted">${t("Nên đóng trình duyệt trước khi dọn bộ nhớ đệm trình duyệt.")}</p>`, "🧹 " + t("Dọn ngay")))) return;
   try {
     const r = await runAction("junk-clean", { ids });
-    toast(`Đã dọn ${num(r.moved)} file rác (${fmt(r.bytes)}).${r.skipped ? ` Bỏ qua ${num(r.skipped)} file đang dùng hoặc cần quyền.` : ""}` + stopped(r),
-      r.batch_ids.length ? { action: "↩ Hoàn tác", onAction: () => undo(r.batch_ids) } : {});
+    toast(t("Đã dọn {0} file rác ({1}).", num(r.moved), fmt(r.bytes)) + (r.skipped ? " " + t("Bỏ qua {0} {0|file|files} đang dùng hoặc cần quyền.", num(r.skipped)) : "") + stopped(r),
+      r.batch_ids.length ? { action: "↩ " + t("Hoàn tác"), onAction: () => undo(r.batch_ids) } : {});
     refreshBadge(); state.junk = null; await api("junk-scan", {}); pollJob();
   } catch (e) { toast(e.message, { err: true }); }
 };
 
 // ---------- startup programs ----------
-const LABELS = { safe: ['ok', "Có thể tắt"], unknown: ['', "Chưa rõ"], keep: ['keep', "Nên giữ"] };
+const LABELS = { safe: ["ok", "Có thể tắt"], unknown: ["", "Chưa rõ"], keep: ["keep", "Nên giữ"] };
 $$("#startupFilter .chip").forEach((b) => b.onclick = () => { state.startupFilter = b.dataset.f; $$("#startupFilter .chip").forEach((x) => x.classList.toggle("active", x === b)); drawStartup(); });
 $("#startupReload").onclick = () => { state.startup = null; renderStartup(); };
 async function renderStartup() {
   if (!state.startup) {
-    $("#startupList").innerHTML = `<div class="empty"><div class="spinner inline"></div> Đang đọc danh sách chương trình…</div>`;
-    try { state.startup = await api("startup"); } catch (e) { $("#startupList").innerHTML = `<div class="empty">Không đọc được: ${esc(e.message)}</div>`; return; }
+    $("#startupList").innerHTML = `<div class="empty"><div class="spinner inline"></div> ${t("Đang đọc danh sách chương trình…")}</div>`;
+    try { state.startup = await api("startup"); } catch (e) { $("#startupList").innerHTML = `<div class="empty">${t("Không đọc được: {0}", esc(e.message))}</div>`; return; }
   }
   const plat = state.info ? state.info.platform : "";
   $("#startupNote").innerHTML = plat === "windows"
-    ? `<div class="info">Với mục có nhãn <b>Cần quyền quản trị</b>, Windows sẽ hỏi “Cho phép ứng dụng thay đổi thiết bị?”. Trước lần thay đổi đầu tiên, ứng dụng sẽ đề nghị tạo <b>điểm khôi phục hệ thống</b> để có thể quay lại nếu cần.</div>`
-    : plat === "mac" ? `<div class="info">macOS có thể hỏi quyền điều khiển “System Events” khi đọc mục đăng nhập. Mục <b>Dịch vụ hệ thống</b> cần nhập mật khẩu máy.</div>`
-    : `<div class="info">Tính năng này dành cho Windows và macOS.</div>`;
+    ? `<div class="info">${t("Với mục có nhãn <b>Cần quyền quản trị</b>, Windows sẽ hỏi “Cho phép ứng dụng thay đổi thiết bị?”. Trước lần thay đổi đầu tiên, ứng dụng sẽ đề nghị tạo <b>điểm khôi phục hệ thống</b> để có thể quay lại nếu cần.")}</div>`
+    : plat === "mac" ? `<div class="info">${t("macOS có thể hỏi quyền điều khiển “System Events” khi đọc mục đăng nhập. Mục <b>Dịch vụ hệ thống</b> cần nhập mật khẩu máy.")}</div>`
+    : `<div class="info">${t("Tính năng này dành cho Windows và macOS.")}</div>`;
   drawStartup();
 }
 function drawStartup() {
@@ -511,12 +513,12 @@ function drawStartup() {
   $("#startupList").innerHTML = shown.length ? shown.map((i) => {
     const [cls, txt] = LABELS[i.label] || ["", i.label];
     return `<div class="row ${i.enabled ? "" : "is-off"}">
-      <div class="name"><div class="t">${esc(i.name)} <span class="tag ${cls}" title="${esc(i.why)}">${txt}</span>${i.admin ? ' <span class="tag">Cần quyền quản trị</span>' : ""}</div>
-        <div class="p">${esc(i.where)}${i.command ? " · " + esc(i.command) : ""}</div><div class="p why">${esc(i.why)}</div></div>
-      <label class="switch" title="${i.enabled ? "Đang bật – bấm để tắt" : "Đang tắt – bấm để bật lại"}"><input type="checkbox" data-startup="${esc(i.id)}" ${i.enabled ? "checked" : ""}><span></span></label>
-      <span class="state">${i.enabled ? "Đang bật" : "Đã tắt"}</span>
+      <div class="name"><div class="t">${esc(i.name)} <span class="tag ${cls}" title="${esc(t(i.why))}">${t(txt)}</span>${i.admin ? ` <span class="tag">${t("Cần quyền quản trị")}</span>` : ""}</div>
+        <div class="p">${esc(t(i.where))}${i.command ? " · " + esc(i.command) : ""}</div><div class="p why">${esc(t(i.why))}</div></div>
+      <label class="switch" title="${i.enabled ? t("Đang bật – bấm để tắt") : t("Đang tắt – bấm để bật lại")}"><input type="checkbox" data-startup="${esc(i.id)}" ${i.enabled ? "checked" : ""}><span></span></label>
+      <span class="state">${i.enabled ? t("Đang bật") : t("Đã tắt")}</span>
     </div>`;
-  }).join("") : `<div class="empty">${items.length ? "Không có mục nào trong nhóm này." : "Không có chương trình nào tự khởi động."}</div>`;
+  }).join("") : `<div class="empty">${items.length ? t("Không có mục nào trong nhóm này.") : t("Không có chương trình nào tự khởi động.")}</div>`;
   $$("[data-startup]").forEach((c) => c.onchange = () => toggleStartup(c.dataset.startup, c.checked, c));
 }
 async function toggleStartup(id, enable, el) {
@@ -524,22 +526,22 @@ async function toggleStartup(id, enable, el) {
   el.disabled = true;
   try {
     if (!enable && item.admin && state.info.platform === "windows" && !state.restorePointDone) {
-      const ans = await dialog("Tạo điểm khôi phục trước?",
-        "<p>Mục này cần quyền quản trị. Nên tạo <b>điểm khôi phục hệ thống</b> trước để có thể đưa Windows về trạng thái hiện tại nếu có trục trặc.</p><p class=\"muted\">Windows sẽ hỏi quyền quản trị. Việc tạo mất khoảng một phút.</p>",
-        "Tạo điểm khôi phục rồi tắt", "Hủy", "Tắt luôn");
+      const ans = await dialog(t("Tạo điểm khôi phục trước?"),
+        `<p>${t("Mục này cần quyền quản trị. Nên tạo <b>điểm khôi phục hệ thống</b> trước để có thể đưa Windows về trạng thái hiện tại nếu có trục trặc.")}</p><p class="muted">${t("Windows sẽ hỏi quyền quản trị. Việc tạo mất khoảng một phút.")}</p>`,
+        t("Tạo điểm khôi phục rồi tắt"), t("Hủy"), t("Tắt luôn"));
       if (!ans) { el.checked = !enable; return; }
       if (ans === true) {
-        toast("Đang tạo điểm khôi phục…");
+        toast(t("Đang tạo điểm khôi phục…"));
         const r = await api("restore-point", {});
-        if (!r.ok && !(await dialog("Chưa tạo được điểm khôi phục", `<p>${esc(r.error || "")}</p><p>Vẫn tiếp tục tắt? Anh/chị vẫn có thể bật lại mục này trong ứng dụng.</p>`, "Vẫn tắt"))) { el.checked = !enable; return; }
-        if (r.ok) toast("Đã tạo điểm khôi phục.");
+        if (!r.ok && !(await dialog(t("Chưa tạo được điểm khôi phục"), `<p>${esc(r.error || "")}</p><p>${t("Vẫn tiếp tục tắt? Anh/chị vẫn có thể bật lại mục này trong ứng dụng.")}</p>`, t("Vẫn tắt")))) { el.checked = !enable; return; }
+        if (r.ok) toast(t("Đã tạo điểm khôi phục."));
       }
       state.restorePointDone = true;
     }
     await api("startup-set", { id, enable });
     item.enabled = enable;
-    toast(enable ? `Đã bật lại “${item.name}”.` : `Đã tắt “${item.name}”. Lần khởi động sau nó sẽ không tự chạy.`,
-      enable ? {} : { action: "↩ Bật lại", onAction: async () => { await api("startup-set", { id, enable: true }); item.enabled = true; drawStartup(); toast(`Đã bật lại “${item.name}”.`); } });
+    toast(enable ? t("Đã bật lại “{0}”.", item.name) : t("Đã tắt “{0}”. Lần khởi động sau nó sẽ không tự chạy.", item.name),
+      enable ? {} : { action: "↩ " + t("Bật lại"), onAction: async () => { await api("startup-set", { id, enable: true }); item.enabled = true; drawStartup(); toast(t("Đã bật lại “{0}”.", item.name)); } });
     drawStartup();
   } catch (e) { el.checked = !enable; toast(e.message, { err: true }); }
   finally { el.disabled = false; }
@@ -558,21 +560,22 @@ $("#orgPreview").onclick = () => previewOrganize();
 $("#orgByYear").onchange = () => { if (state.org) previewOrganize(); };
 async function previewOrganize() {
   const folder = $("#orgPath").value.trim();
-  if (!folder) { toast("Hãy chọn thư mục trước."); return; }
+  if (!folder) { toast(t("Hãy chọn thư mục trước.")); return; }
   try { state.org = await api("organize-preview", { folder, by_year: $("#orgByYear").checked }); } catch (e) { toast(e.message, { err: true }); return; }
   const o = state.org;
-  if (!o.moves.length) { $("#orgSummary").innerHTML = `<div class="empty">Thư mục này đã gọn gàng: không có file lẻ nào cần sắp xếp.</div>`; $("#orgList").classList.add("hidden"); $("#orgBar").classList.add("hidden"); return; }
-  $("#orgSummary").innerHTML = `Sẽ sắp xếp <b>${num(o.moves.length)} file</b> trong <b>${esc(o.folder)}</b> vào các thư mục:<div class="chips static">${o.summary.map((s) => `<span class="chip">📁 ${esc(s.target)} <b>${num(s.count)}</b></span>`).join("")}</div><span class="muted">Thư mục con có sẵn được giữ nguyên. Không file nào bị ghi đè; file trùng tên sẽ được thêm số (2), (3)…</span>`;
+  if (!o.moves.length) { $("#orgSummary").innerHTML = `<div class="empty">${t("Thư mục này đã gọn gàng: không có file lẻ nào cần sắp xếp.")}</div>`; $("#orgList").classList.add("hidden"); $("#orgBar").classList.add("hidden"); return; }
+  $("#orgSummary").innerHTML = t("Sẽ sắp xếp <b>{0} {0|file|files}</b> trong <b>{1}</b> vào các thư mục:", num(o.moves.length), esc(o.folder)) +
+    `<div class="chips static">${o.summary.map((x) => `<span class="chip">📁 ${esc(x.target)} <b>${num(x.count)}</b></span>`).join("")}</div><span class="muted">${t("Thư mục con có sẵn được giữ nguyên. Không file nào bị ghi đè; file trùng tên sẽ được thêm số (2), (3)…")}</span>`;
   $("#orgList").classList.remove("hidden");
-  $("#orgList").innerHTML = `<div class="row head"><span class="cb"><input type="checkbox" id="orgAll" checked></span><div class="name">File</div><span class="arrow"></span><div class="target">Chuyển vào</div><div class="size">Dung lượng</div></div>` +
+  $("#orgList").innerHTML = `<div class="row head"><span class="cb"><input type="checkbox" id="orgAll" checked></span><div class="name">${t("File")}</div><span class="arrow"></span><div class="target">${t("Chuyển vào")}</div><div class="size">${t("Dung lượng")}</div></div>` +
     o.moves.map((m) => `<label class="row pick checked"><span class="cb"><input type="checkbox" data-orgsel value="${esc(m.src)}" checked></span>
-      <div class="name"><div class="t">${esc(m.name)}</div>${m.renamed ? `<div class="p">sẽ đổi tên thành ${esc(m.dest.split(/[\\/]/).pop())} vì trùng tên</div>` : ""}</div>
+      <div class="name"><div class="t">${esc(m.name)}</div>${m.renamed ? `<div class="p">${t("sẽ đổi tên thành {0} vì trùng tên", esc(m.dest.split(/[\\/]/).pop()))}</div>` : ""}</div>
       <span class="arrow">→</span><div class="target">📁 ${esc(m.target)}</div><div class="size">${fmt(m.size)}</div></label>`).join("");
   const upd = () => {
     const n = $$("[data-orgsel]:checked").length;
     $$("[data-orgsel]").forEach((c) => c.closest(".row").classList.toggle("checked", c.checked));
-    $("#orgSel").innerHTML = n ? `Đã chọn <b>${num(n)} file</b>` : `<span class="muted">Chưa chọn file nào</span>`;
-    $("#orgApply").disabled = !n; $("#orgApply").textContent = n ? `📦 Sắp xếp ${num(n)} file` : "📦 Sắp xếp";
+    $("#orgSel").innerHTML = n ? t("Đã chọn <b>{0} {0|file|files}</b>", num(n)) : `<span class="muted">${t("Chưa chọn file nào")}</span>`;
+    $("#orgApply").disabled = !n; $("#orgApply").textContent = "📦 " + (n ? t("Sắp xếp {0} {0|file|files}", num(n)) : t("Sắp xếp"));
     $("#orgAll").checked = n === o.moves.length; $("#orgAll").indeterminate = n > 0 && n < o.moves.length;
   };
   $$("[data-orgsel]").forEach((c) => c.onchange = upd);
@@ -584,8 +587,8 @@ $("#orgApply").onclick = async () => {
   if (!chosen.length) return;
   try {
     const r = await runAction("organize-apply", { folder: state.org.folder, chosen, by_year: $("#orgByYear").checked });
-    toast(`Đã sắp xếp ${num(r.moved)} file.` + (r.failed.length ? ` ${num(r.failed.length)} file giữ nguyên.` : ""),
-      { err: r.failed.length > 0, action: "↩ Hoàn tác", onAction: () => undo(r.batch_id).then(previewOrganize) });
+    toast(t("Đã sắp xếp {0} {0|file|files}.", num(r.moved)) + (r.failed.length ? " " + t("{0} {0|file|files} giữ nguyên.", num(r.failed.length)) : ""),
+      { err: r.failed.length > 0, action: "↩ " + t("Hoàn tác"), onAction: () => undo(r.batch_id).then(previewOrganize) });
     previewOrganize();
   } catch (e) { toast(e.message, { err: true }); }
 };
@@ -597,21 +600,22 @@ async function renderSchedule() {
   $("#schEnabled").checked = c.enabled; $("#schFreq").value = c.frequency; $("#schHour").value = c.hour;
   $("#schJunk").checked = c.junk; $("#schPurge").value = String(c.purge_days);
   const last = c.last_run;
-  $("#schStatus").innerHTML = (!c.supported ? `<div class="info">Dọn dẹp theo lịch dành cho Windows và macOS.</div>` : "") +
-    (c.enabled && c.health && !c.health.ok ? `<div class="info warn">⚠️ ${esc(c.health.message)}</div>` :
-    `<p>${c.enabled ? (c.registered ? "✅ Lịch đang bật và đã được đăng ký với hệ điều hành." : "⚠️ Lịch đang bật nhưng chưa đăng ký được với hệ điều hành. Hãy bấm Lưu lịch lần nữa.") : "Lịch đang tắt."}</p>`) +
-    (last && last.skipped ? `<p class="muted">Lần chạy gần nhất: ${fmtDate(last.ts)} · ${esc(last.skipped)}.</p>` : last ? `<p class="muted">Lần chạy gần nhất: ${fmtDate(last.ts)} · dọn ${num(last.junk_moved)} file rác (${fmt(last.junk_bytes)})${last.purged_bytes ? ` · xóa hẳn ${fmt(last.purged_bytes)} trong khu cách ly` : ""}.</p>` : `<p class="muted">Chưa chạy lần nào.</p>`) +
-    `<p class="muted">Khu cách ly đang giữ ${fmt(c.pending_bytes)}.</p>`;
+  $("#schStatus").innerHTML = (!c.supported ? `<div class="info">${t("Dọn dẹp theo lịch dành cho Windows và macOS.")}</div>` : "") +
+    (c.enabled && c.health && !c.health.ok ? `<div class="info warn">⚠️ ${esc(t(c.health.message))}</div>` :
+    `<p>${c.enabled ? (c.registered ? "✅ " + t("Lịch đang bật và đã được đăng ký với hệ điều hành.") : "⚠️ " + t("Lịch đang bật nhưng chưa đăng ký được với hệ điều hành. Hãy bấm Lưu lịch lần nữa.")) : t("Lịch đang tắt.")}</p>`) +
+    (last && last.skipped ? `<p class="muted">${t("Lần chạy gần nhất: {0}", fmtDate(last.ts))} · ${esc(t(last.skipped))}.</p>` : last ? `<p class="muted">${t("Lần chạy gần nhất: {0}", fmtDate(last.ts))} · ${t("dọn {0} file rác ({1})", num(last.junk_moved), fmt(last.junk_bytes))}${last.purged_bytes ? " · " + t("xóa hẳn {0} trong khu cách ly", fmt(last.purged_bytes)) : ""}.</p>` : `<p class="muted">${t("Chưa chạy lần nào.")}</p>`) +
+    `<p class="muted">${t("Khu cách ly đang giữ {0}.", fmt(c.pending_bytes))}</p>`;
 }
 $("#schSave").onclick = async () => {
   try {
     await api("schedule", { enabled: $("#schEnabled").checked, frequency: $("#schFreq").value, hour: +$("#schHour").value, junk: $("#schJunk").checked, purge_days: +$("#schPurge").value });
-    toast($("#schEnabled").checked ? "Đã lưu và bật lịch dọn dẹp." : "Đã tắt lịch dọn dẹp."); renderSchedule();
+    toast($("#schEnabled").checked ? t("Đã lưu và bật lịch dọn dẹp.") : t("Đã tắt lịch dọn dẹp.")); renderSchedule();
   } catch (e) { toast(e.message, { err: true }); }
 };
 $("#schRunNow").onclick = async () => {
-  if (!(await dialog("Chạy dọn dẹp tự động ngay?", "<p>Ứng dụng sẽ làm đúng những gì lịch sẽ làm: dọn các mục rác hệ thống <b>an toàn</b> vào khu cách ly" + (+$("#schPurge").value ? ", và xóa hẳn file đã nằm trong khu cách ly quá số ngày đã chọn" : "") + ".</p>", "Chạy ngay"))) return;
-  try { const r = await runAction("schedule-run", {}); toast(`Đã dọn ${num(r.junk_moved)} file rác (${fmt(r.junk_bytes)}).`); refreshBadge(); renderSchedule(); } catch (e) { toast(e.message, { err: true }); }
+  const purge = +$("#schPurge").value;
+  if (!(await dialog(t("Chạy dọn dẹp tự động ngay?"), `<p>${purge ? t("Ứng dụng sẽ làm đúng những gì lịch sẽ làm: dọn các mục rác hệ thống <b>an toàn</b> vào khu cách ly, và xóa hẳn file đã nằm trong khu cách ly quá số ngày đã chọn.") : t("Ứng dụng sẽ làm đúng những gì lịch sẽ làm: dọn các mục rác hệ thống <b>an toàn</b> vào khu cách ly.")}</p>`, t("Chạy ngay")))) return;
+  try { const r = await runAction("schedule-run", {}); toast(t("Đã dọn {0} file rác ({1}).", num(r.junk_moved), fmt(r.junk_bytes))); refreshBadge(); renderSchedule(); } catch (e) { toast(e.message, { err: true }); }
 };
 
 window.addEventListener("resize", () => { if (state.view === "usage") renderUsage(); });
