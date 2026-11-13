@@ -131,7 +131,7 @@ def run_auto_clean() -> dict:
     cfg = get()
     result: dict = {"ts": time.time(), "junk_moved": 0, "junk_bytes": 0, "purged_bytes": 0}
     if cfg.get("junk", True):
-        ids = [c["id"] for c in junk.scan() if c["label"] == "safe" and c["count"] > 0]
+        ids = [c["id"] for c in junk.scan() if c["label"] == "safe" and not c["admin"] and c["count"] > 0]
         if ids:
             r = junk.clean(ids)
             result["junk_moved"], result["junk_bytes"] = r["moved"], r["bytes"]

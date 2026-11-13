@@ -1,6 +1,6 @@
 # Thuyết minh phần mềm PC Cleaner – Dọn dẹp máy tính
 
-Phiên bản 0.1 · Tháng 11/2026 · Dùng cho Windows và macOS
+Phiên bản 0.2 · Tháng 11/2026 · Dùng cho Windows và macOS
 
 ## 1. Giới thiệu
 
@@ -25,7 +25,12 @@ Nguyên tắc xuyên suốt của phần mềm là **an toàn trước, gọn g�
 | File lớn nhất | Liệt kê các file nặng nhất, kèm loại file và thời gian sửa lần cuối | Dọn nhanh những file chiếm nhiều chỗ nhất |
 | File cũ lâu không dùng | Tìm file lớn không được sửa trong 6 tháng, 1 năm hoặc 2 năm | Phát hiện video, bộ cài, bản sao lưu đã bị bỏ quên |
 | File trùng lặp | Tìm các file giống hệt nhau về nội dung, dù khác tên hoặc nằm ở thư mục khác | Bỏ bản thừa, giữ lại một bản, lấy lại dung lượng bị lãng phí |
+| Ảnh gần giống nhau | Tìm ảnh trông giống nhau dù khác file: ảnh chụp liên tiếp, ảnh đã thu nhỏ, nén lại, chỉnh sáng nhẹ | Bỏ bớt ảnh thừa, luôn giữ lại ảnh nét nhất |
 | Theo loại file | Thống kê video, ảnh, tài liệu, bộ cài… mỗi loại chiếm bao nhiêu | Hiểu thói quen lưu trữ, biết nên dọn nhóm nào trước |
+| Rác hệ thống | Tìm file tạm, bộ nhớ đệm, báo cáo lỗi, bản cập nhật đã tải xong của Windows/macOS và trình duyệt | Lấy lại dung lượng mà không phải tự lục từng thư mục ẩn |
+| Khởi động cùng máy | Liệt kê chương trình tự chạy khi bật máy và chạy nền, gắn nhãn Có thể tắt / Nên giữ / Chưa rõ | Máy khởi động nhanh hơn; chỉ tắt, không gỡ, bật lại một chạm |
+| Sắp xếp thư mục | Gom các file nằm lộn xộn trong Downloads, Desktop… vào thư mục con theo loại (và theo năm) | Thư mục gọn gàng; xem trước rồi mới di chuyển, hoàn tác được |
+| Dọn dẹp theo lịch | Tự dọn rác hệ thống mỗi ngày/tuần/tháng, tự xóa hẳn khu cách ly quá hạn | Máy luôn gọn mà không phải nhớ |
 | Khu cách ly và hoàn tác | File bị dọn được cất vào khu cách ly; có nút Lấy lại và Xóa vĩnh viễn | Không sợ xóa nhầm, đổi ý lúc nào cũng được |
 | Nhật ký thao tác | Ghi lại mọi lần dọn, lấy lại, xóa vĩnh viễn và lý do file được giữ nguyên | Kiểm tra lại được mọi việc phần mềm đã làm |
 
@@ -62,13 +67,59 @@ Khi bấm "Dọn", phần mềm hỏi lại và liệt kê đúng những file s
 
 ![Khu cách ly và nút lấy lại](images/khu-cach-ly.png)
 
+### 2.5. Ảnh gần giống nhau
+
+Khác với file trùng lặp (giống hệt từng byte), mục này tìm những ảnh **trông** giống nhau: cùng một ảnh nhưng đã bị thu nhỏ để gửi Zalo, lưu lại với chất lượng thấp hơn, đổi sang định dạng khác hoặc chỉnh sáng nhẹ, và các ảnh chụp liên tiếp gần như y hệt. Ảnh được hiện dạng lưới thu nhỏ để người dùng nhìn tận mắt trước khi chọn.
+
+Trong mỗi nhóm, ảnh có độ phân giải cao nhất được gắn nhãn "Giữ lại", các ảnh còn lại được đánh dấu sẵn. Có ba mức "Độ giống": Rất giống (chặt), Giống (khuyên dùng) và Hơi giống (rộng hơn, cần xem kỹ). Dù chọn thế nào, mỗi nhóm luôn giữ lại ít nhất một ảnh.
+
+![Ảnh gần giống nhau](images/anh-giong-nhau.png)
+
+### 2.6. Rác hệ thống
+
+Bấm "Kiểm tra rác hệ thống", phần mềm liệt kê từng nhóm rác kèm dung lượng và nhãn:
+
+- Windows: file tạm của tài khoản và của Windows, bản cập nhật Windows đã tải xong, file lỗi (crash dump, báo cáo lỗi), bộ nhớ đệm ảnh thu nhỏ, bộ nhớ đệm trình duyệt (Chrome, Edge, Cốc Cốc, Firefox), Prefetch.
+- macOS: bộ nhớ đệm ứng dụng, nhật ký, báo cáo lỗi, dữ liệu tạm của Xcode.
+
+Nhãn **An toàn** nghĩa là ứng dụng sẽ tự tạo lại khi cần; nhãn **Cân nhắc** (ví dụ Prefetch, dữ liệu Xcode) nghĩa là xóa được nhưng có thể làm lần mở ứng dụng kế tiếp chậm hơn một chút. Chỉ các nhóm An toàn được chọn sẵn. File vừa được dùng trong 24 giờ qua được bỏ qua để không làm hỏng chương trình đang chạy. Rác cũng được chuyển vào khu cách ly như mọi lần dọn khác.
+
+![Rác hệ thống (ảnh chụp trên máy thử nghiệm)](images/rac-he-thong.png)
+
+### 2.7. Khởi động cùng máy
+
+Trang này liệt kê mọi thứ tự chạy khi bật máy: chương trình khởi động cùng Windows/macOS, tác vụ theo lịch, dịch vụ chạy nền (Windows) và Login Items, LaunchAgents (macOS). Mỗi mục có nhãn:
+
+- **Có thể tắt**: ứng dụng hoặc trình cập nhật (Spotify, Zalo, Steam, Google Update…). Tắt chỉ khiến nó không tự mở, mở tay vẫn chạy bình thường.
+- **Nên giữ**: liên quan đến bảo mật, phần cứng, bộ gõ tiếng Việt (Windows Security, UniKey, driver âm thanh…).
+- **Chưa rõ**: phần mềm không nhận ra; nên tìm hiểu trước khi tắt.
+
+Mỗi mục có một công tắc. Phần mềm **chỉ tắt, không bao giờ gỡ hay xóa** chương trình: gạt công tắc lại là bật lại như cũ. Mục ghi "Cần quyền quản trị" sẽ khiến Windows hỏi "Cho phép ứng dụng thay đổi thiết bị?". Trước lần thay đổi cần quyền quản trị đầu tiên, phần mềm đề nghị tạo **điểm khôi phục hệ thống** để có thể quay lại nếu cần.
+
+![Khởi động cùng máy (dữ liệu minh họa trên Windows)](images/khoi-dong.png)
+
+### 2.8. Sắp xếp thư mục
+
+Chọn một thư mục hay bị lộn xộn (Downloads, Desktop, Documents hoặc thư mục bất kỳ), bấm "Xem trước". Phần mềm cho biết từng file sẽ được chuyển vào đâu: Ảnh, Video, Âm thanh, Tài liệu, Nén - Bộ cài, Lập trình, File tạm, Khác. Nếu bật "Chia ảnh và video theo năm", ảnh và video được xếp tiếp vào thư mục năm (ví dụ Ảnh/2026).
+
+Chỉ các file nằm trực tiếp trong thư mục được sắp xếp; thư mục con có sẵn được giữ nguyên. Không file nào bị ghi đè: nếu trùng tên, file mới được đặt tên thêm " (2)", " (3)". Người dùng bỏ chọn những file không muốn di chuyển rồi bấm "Sắp xếp". Muốn quay lại, bấm "Hoàn tác" ngay trên thông báo hoặc trong Khu cách ly: mọi file trở về chỗ cũ và các thư mục mới tạo được xóa đi.
+
+![Xem trước khi sắp xếp thư mục](images/sap-xep.png)
+
+### 2.9. Dọn dẹp theo lịch
+
+Bật "Dọn dẹp tự động", chọn tần suất (mỗi ngày, mỗi tuần vào Chủ nhật, mỗi tháng vào ngày 1) và giờ chạy. Đến giờ, máy tự dọn rác hệ thống, kể cả khi người dùng không mở phần mềm. Lịch chỉ dọn những nhóm rác có nhãn An toàn, và file vẫn vào khu cách ly. Người dùng cũng có thể chọn tự xóa hẳn những lần dọn đã nằm trong khu cách ly quá 7, 30 hoặc 90 ngày. Nút "Chạy thử ngay" giúp xem kết quả mà không phải chờ.
+
+![Cài đặt dọn dẹp theo lịch](images/lich.png)
+
 ## 3. Hướng dẫn sử dụng nhanh
 
 1. Mở phần mềm, ở trang Tổng quan bấm "Quét thư mục này" ở ô Thư mục cá nhân (nên bắt đầu ở đây), hoặc chọn một ổ đĩa hay một thư mục khác.
 2. Chờ thanh tiến trình chạy xong. Phần mềm tự chuyển sang trang Thư mục chiếm chỗ.
-3. Xem các báo cáo ở menu bên trái: File lớn nhất, File cũ lâu không dùng, File trùng lặp, Theo loại file.
+3. Xem các báo cáo ở menu bên trái: File lớn nhất, File cũ lâu không dùng, File trùng lặp, Ảnh gần giống nhau, Theo loại file.
 4. Đánh dấu những file không cần, bấm "Dọn", đọc lại danh sách và bấm "Dọn ngay".
-5. Dùng máy vài ngày. Nếu không thiếu gì, vào Khu cách ly và bấm "Xóa vĩnh viễn" để giải phóng dung lượng. Nếu cần lại file nào, bấm "Lấy lại".
+5. Trong nhóm "Dọn dẹp hệ thống": kiểm tra rác hệ thống, tắt bớt chương trình khởi động cùng máy, sắp xếp thư mục Downloads, và bật dọn dẹp theo lịch nếu muốn (không cần quét trước).
+6. Dùng máy vài ngày. Nếu không thiếu gì, vào Khu cách ly và bấm "Xóa vĩnh viễn" để giải phóng dung lượng. Nếu cần lại file nào, bấm "Lấy lại".
 
 ## 4. Nguyên lý hoạt động
 
@@ -80,7 +131,7 @@ Phần mềm gồm ba lớp, tất cả chạy ngay trên máy người dùng, k
 |---|---|---|
 | Giao diện | Cửa sổ ứng dụng (pywebview) hiển thị trang HTML/JavaScript | Hiện báo cáo, nhận thao tác của người dùng |
 | Máy chủ nội bộ | Máy chủ HTTP nhỏ viết bằng Python, chỉ nghe ở địa chỉ 127.0.0.1 | Nhận yêu cầu từ giao diện, chạy tác vụ quét/tìm trùng ở chế độ nền |
-| Lõi xử lý và dữ liệu | Các mô-đun quét, tìm trùng, cách ly; cơ sở dữ liệu SQLite | Đọc ổ đĩa, tính toán, lưu kết quả và nhật ký |
+| Lõi xử lý và dữ liệu | Các mô-đun quét, tìm trùng, tìm ảnh giống, rác hệ thống, khởi động, sắp xếp, lịch, cách ly; cơ sở dữ liệu SQLite | Đọc ổ đĩa, tính toán, lưu kết quả và nhật ký |
 
 Máy chủ nội bộ sinh một mã bí mật ngẫu nhiên mỗi lần mở phần mềm. Mọi yêu cầu phải kèm mã này, nên trang web hay chương trình khác trên máy không thể điều khiển phần mềm.
 
@@ -125,7 +176,48 @@ Mỗi lần dọn có một mã riêng. Với từng file, phần mềm ghi vào
 - **Lấy lại**: đọc nhật ký và chuyển từng file về đúng vị trí gốc. Nếu ở vị trí gốc đã có một file khác, phần mềm không ghi đè mà báo lại cho người dùng.
 - **Xóa vĩnh viễn**: chỉ thực hiện khi người dùng bấm và xác nhận. Phần mềm xóa bản trong khu cách ly và chỉ cộng vào "dung lượng đã giải phóng" những file thật sự được xóa.
 
-### 4.5. Các lớp bảo vệ chống mất dữ liệu
+### 4.5. Tìm ảnh gần giống nhau
+
+Phần mềm tính cho mỗi ảnh một "dấu vân tay hình ảnh" 64 bit theo phương pháp dHash:
+
+1. Thu ảnh về 9×8 điểm ảnh, đổi sang ảnh xám. Bước này xóa hết chi tiết nhỏ, chỉ giữ bố cục sáng tối.
+2. Với mỗi hàng, so từng điểm với điểm bên phải: sáng hơn thì ghi 1, tối hơn thì ghi 0. Được 8×8 = 64 bit.
+
+Ảnh thu nhỏ, nén lại hay chỉnh sáng nhẹ vẫn giữ bố cục sáng tối nên cho dấu vân tay gần như y hệt. Hai ảnh được coi là giống nhau khi số bit khác nhau (khoảng cách Hamming) không quá ngưỡng của mức Độ giống (Rất giống: 3, Giống: 6, Hơi giống: 7).
+
+Để không phải so mọi cặp ảnh, phần mềm chia 64 bit thành 8 khối 8 bit. Hai ảnh khác nhau không quá 7 bit thì chắc chắn trùng nhau ít nhất một khối (nguyên lý chuồng bồ câu), nên chỉ cần so các ảnh có chung một khối. Các cặp giống nhau được gom thành nhóm. Dấu vân tay được lưu lại, lần sau ảnh nào chưa đổi thì không phải đọc lại. Ảnh thu nhỏ trên màn hình được tạo trực tiếp trong bộ nhớ, không ghi ra ổ đĩa.
+
+### 4.6. Dọn rác hệ thống
+
+Mỗi nhóm rác là một danh sách thư mục cố định, đã biết chắc là chỉ chứa dữ liệu tạm (ví dụ `%TEMP%`, `C:\Windows\SoftwareDistribution\Download`, `~/Library/Caches`). Phần mềm chỉ dọn **bên trong** những thư mục này, với các điều kiện:
+
+- File phải cũ hơn một khoảng thời gian (thường 24 giờ; bản cập nhật Windows 72 giờ) để không đụng vào file chương trình đang dùng.
+- Không đi theo lối tắt; không đụng vào file của tài khoản khác; không đụng vào thư mục dữ liệu của chính phần mềm.
+- Ngay lúc dọn, đường dẫn thật của từng file được kiểm tra lại: nếu file nằm ngoài thư mục rác (ví dụ do lối tắt hoặc ".."), file bị từ chối.
+
+Vì nhiều thư mục rác nằm trong vùng được bảo vệ (AppData, ~/Library), phần mềm chỉ mở ngoại lệ cho đúng các thư mục rác đã liệt kê, còn mọi phần khác của vùng bảo vệ vẫn bị chặn. File đang bị khóa được bỏ qua lặng lẽ, không báo lỗi.
+
+### 4.7. Khởi động cùng máy
+
+Phần mềm dùng chính cơ chế bật/tắt có sẵn của hệ điều hành, nên kết quả giống hệt khi tắt bằng Task Manager hay System Settings:
+
+| Loại | Windows | macOS |
+|---|---|---|
+| Chương trình khởi động | Ghi cờ bật/tắt vào khóa `StartupApproved` trong Registry; mục khởi động gốc giữ nguyên | Login Items qua System Events |
+| Tác vụ theo lịch | `Disable-ScheduledTask` / `Enable-ScheduledTask` | — |
+| Dịch vụ chạy nền | Chuyển sang "Manual" (chạy khi cần), không tắt hẳn; chỉ dịch vụ của hãng thứ ba | `launchctl disable` / `enable` cho LaunchAgents, LaunchDaemons; file .plist không bao giờ bị xóa |
+
+Mỗi thay đổi được ghi vào nhật ký kèm trạng thái cũ. Phần mềm chỉ nhận lệnh cho những mục vừa được liệt kê, nên không thể bị lợi dụng để sửa chỗ khác trong Registry. Thao tác cần quyền quản trị được chạy qua hộp thoại xin quyền chuẩn của hệ điều hành (UAC trên Windows, hộp nhập mật khẩu trên macOS). Điểm khôi phục hệ thống được tạo bằng lệnh `Checkpoint-Computer` của Windows.
+
+### 4.8. Sắp xếp thư mục
+
+Bản xem trước và lần sắp xếp thật dùng cùng một quy tắc: phần mềm tính lại kế hoạch ngay lúc sắp xếp và chỉ di chuyển những file người dùng đã chọn. Mỗi thư mục mới tạo và mỗi lần di chuyển đều được ghi vào nhật ký. Khi hoàn tác, file được trả về theo thứ tự ngược lại, rồi các thư mục do phần mềm tạo ra được xóa nếu đã trống. Thư mục có sẵn từ trước không bao giờ bị xóa. Thư mục hệ thống và chương trình không thể sắp xếp.
+
+### 4.9. Dọn dẹp theo lịch
+
+Phần mềm đăng ký một tác vụ với bộ hẹn giờ của hệ điều hành: Task Scheduler (tác vụ `PCCleaner\AutoClean`) trên Windows, LaunchAgent `com.pccleaner.autoclean` trên macOS. Đến giờ, hệ điều hành chạy phần mềm với tham số `--auto-clean`: phần mềm không mở cửa sổ, chỉ dọn các nhóm rác An toàn không cần quyền quản trị, xóa hẳn các lần dọn quá hạn (nếu được chọn), ghi kết quả rồi thoát. Tắt lịch là gỡ tác vụ đó khỏi hệ điều hành.
+
+### 4.10. Các lớp bảo vệ chống mất dữ liệu
 
 | Lớp bảo vệ | Cách hoạt động |
 |---|---|
@@ -137,6 +229,11 @@ Mỗi lần dọn có một mã riêng. Với từng file, phần mềm ghi vào
 | Xác nhận trước khi dọn | Hộp thoại liệt kê đúng những file sắp được dọn |
 | Cách ly thay vì xóa | File bị dọn vẫn nằm trong khu cách ly, lấy lại được bất cứ lúc nào |
 | Không ghi đè khi lấy lại | Nếu vị trí cũ đã có file khác, file đó được giữ nguyên |
+| Rác chỉ trong thư mục rác | Chỉ dọn bên trong danh sách thư mục rác cố định, file phải đủ cũ, kiểm tra lại đường dẫn thật ngay lúc dọn |
+| Khởi động: chỉ tắt, không gỡ | Dùng cờ bật/tắt có sẵn của hệ điều hành, bật lại một chạm; điểm khôi phục trước khi đổi mục cần quyền quản trị |
+| Sắp xếp: xem trước, không ghi đè | Hiện kế hoạch trước khi di chuyển, trùng tên thì đặt tên mới, hoàn tác xóa luôn thư mục vừa tạo |
+| Lịch tự động thận trọng | Chỉ dọn nhóm rác An toàn, không xin quyền quản trị, file vẫn vào khu cách ly |
+| Ảnh giống: luôn giữ một ảnh | Không cho dọn hết ảnh trong một nhóm |
 | Nhật ký đầy đủ | Mọi thao tác và mọi file bị từ chối kèm lý do đều được ghi lại |
 
 ## 5. Yêu cầu hệ thống và cài đặt
@@ -145,8 +242,9 @@ Mỗi lần dọn có một mã riêng. Với từng file, phần mềm ghi vào
 - Bản đóng gói sẵn (.exe cho Windows, .app cho macOS) được tạo tự động trên GitHub Actions sau mỗi lần cập nhật mã nguồn.
 - Bản .app cho macOS chưa được ký số: lần đầu mở, bấm chuột phải vào ứng dụng rồi chọn "Open".
 - Chạy từ mã nguồn: cài Python 3.10 trở lên, chạy `pip install -r requirements.txt` rồi `python run.py`.
+- Tìm ảnh gần giống nhau dùng thư viện Pillow (đã có trong bản đóng gói). Ảnh HEIC của iPhone cần cài thêm `pillow-heif`.
 
-Dữ liệu của phần mềm (bộ nhớ đệm kết quả quét, khu cách ly, nhật ký) nằm trong thư mục `PCCleaner` đã nêu ở mục 4.4. Phần mềm không gửi bất kỳ dữ liệu nào ra ngoài máy.
+Dữ liệu của phần mềm (bộ nhớ đệm kết quả quét, khu cách ly, nhật ký, cài đặt lịch) nằm trong thư mục `PCCleaner` đã nêu ở mục 4.4. Phần mềm không gửi bất kỳ dữ liệu nào ra ngoài máy.
 
 ## 6. Kiểm thử
 
@@ -159,6 +257,13 @@ Bộ kiểm thử tự động chạy trên cả Windows và macOS sau mỗi l�
 - Chọn tất cả bản trùng vẫn giữ lại một bản; file đã thay đổi sau khi quét không bị dọn.
 - Lấy lại không ghi đè file mới; dừng quét giữa chừng không để lại dữ liệu.
 - Quét bỏ qua lối tắt và junction, không lặp vô tận.
+- Ảnh gần giống: tìm đúng ảnh thu nhỏ, nén lại, chỉnh sáng; không gộp nhầm ảnh khác; luôn giữ lại một ảnh.
+- Rác hệ thống: chỉ dọn file đủ cũ bên trong thư mục rác, không đi theo lối tắt ra ngoài, không thoát ra ngoài bằng ".."; lấy lại được.
+- Khởi động cùng máy: tắt rồi bật lại một mục khởi động thật trong Registry (Windows) và một LaunchAgent thật (macOS); mục gốc không bị xóa.
+- Sắp xếp thư mục: xem trước đúng, không ghi đè file trùng tên, hoàn tác trả file về và xóa thư mục vừa tạo; thư mục hệ thống bị từ chối.
+- Dọn theo lịch: đăng ký và gỡ tác vụ thật với Task Scheduler/launchd; xóa hẳn khu cách ly quá hạn đúng dung lượng.
+
+Lần chạy gần nhất: Windows 25 bài kiểm thử đạt (2 bài chỉ dành cho macOS được bỏ qua), macOS 25 đạt (1 bài chỉ dành cho Windows được bỏ qua).
 
 ## 7. Lộ trình phát triển
 
@@ -166,8 +271,10 @@ Bộ kiểm thử tự động chạy trên cả Windows và macOS sau mỗi l�
 |---|---|---|
 | 1 | Quét ổ đĩa, báo cáo dung lượng, file lớn, file cũ, giao diện | Đã xong |
 | 2 | Tìm file trùng lặp chính xác, khu cách ly và hoàn tác | Đã xong |
-| 3 | Tìm ảnh gần giống nhau (ảnh chụp liên tiếp, ảnh đã nén lại) | Sắp làm |
-| 4 | Dọn rác hệ thống: thư mục Temp, bản cập nhật cũ, file lỗi, bộ nhớ đệm ảnh thu nhỏ (Windows); bộ nhớ đệm và nhật ký ứng dụng (macOS) | Sắp làm |
-| 5 | Quản lý chương trình khởi động cùng máy và chạy nền: chỉ tắt, không gỡ, bật lại một chạm; tạo điểm khôi phục hệ thống trước khi thay đổi (Windows) | Sắp làm |
-| 6 | Gợi ý sắp xếp thư mục, xem trước trước khi di chuyển | Sắp làm |
-| 7 | Dọn dẹp theo lịch | Sắp làm |
+| 3 | Tìm ảnh gần giống nhau (ảnh chụp liên tiếp, ảnh đã nén lại) | Đã xong |
+| 4 | Dọn rác hệ thống: thư mục Temp, bản cập nhật cũ, file lỗi, bộ nhớ đệm ảnh thu nhỏ (Windows); bộ nhớ đệm và nhật ký ứng dụng (macOS) | Đã xong |
+| 5 | Quản lý chương trình khởi động cùng máy và chạy nền: chỉ tắt, không gỡ, bật lại một chạm; tạo điểm khôi phục hệ thống trước khi thay đổi (Windows) | Đã xong |
+| 6 | Gợi ý sắp xếp thư mục, xem trước trước khi di chuyển | Đã xong |
+| 7 | Dọn dẹp theo lịch | Đã xong |
+
+Những phần chưa được thử trên máy thật (chỉ kiểm thử tự động): cửa sổ hộp thoại xin quyền quản trị (UAC) khi tắt dịch vụ hoặc mục "mọi người dùng", tạo điểm khôi phục hệ thống, và danh sách Login Items trên macOS (lần đầu macOS sẽ hỏi quyền cho phép điều khiển System Events).
