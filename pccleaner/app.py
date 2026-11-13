@@ -69,7 +69,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--headless", action="store_true", help=_("chỉ chạy máy chủ (dùng cho kiểm thử)"))
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--auto-clean", action="store_true", help=_("dọn dẹp tự động theo lịch rồi thoát"))
+    ap.add_argument("--before-uninstall", action="store_true", help=_("gỡ lịch dọn tự động khỏi hệ thống trước khi gỡ ứng dụng"))
     args = ap.parse_args(argv)
+
+    if args.before_uninstall:
+        from . import scheduler
+
+        scheduler.remove_for_uninstall()
+        _say(_("Đã gỡ lịch dọn tự động. Dữ liệu và khu cách ly vẫn ở {0}", paths.data_dir()))
+        return 0
 
     if args.auto_clean:
         from . import scheduler
