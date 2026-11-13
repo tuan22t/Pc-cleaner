@@ -29,7 +29,7 @@ done
 "$VPY" -m pip install -q --force-reinstall --no-deps "$BUILD"/wheels/universal2/*.whl
 
 "$VPY" -m PyInstaller --noconfirm --windowed --target-arch universal2 --name PCCleaner \
-  --osx-bundle-identifier com.pccleaner.app \
+  --osx-bundle-identifier com.pccleaner.app --collect-submodules pccleaner \
   --add-data "pccleaner/web:pccleaner/web" run.py
 
 APP="dist/PC Cleaner.app"

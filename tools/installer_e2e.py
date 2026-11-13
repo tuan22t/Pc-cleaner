@@ -68,6 +68,8 @@ class App:
                 log(f"app {info['version']} answers, data in {info['data_dir']}")
                 return info
             except OSError:
+                if self.proc.poll() is not None:
+                    raise AssertionError(f"the installed app exited with code {self.proc.returncode}")
                 time.sleep(0.5)
         raise AssertionError("the installed app did not start")
 

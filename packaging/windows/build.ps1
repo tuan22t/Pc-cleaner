@@ -1,4 +1,5 @@
 # Build the Windows app and its installer.
+# --collect-submodules: the platform modules are imported by name at run time.
 #   powershell -File packaging\windows\build.ps1 -Version 0.6.0
 # Signing runs only when the certificate secrets are set (see docs/phat-hanh.md):
 #   WIN_SIGN_COMMAND  the full signing command, with $f where the file goes, e.g.
@@ -10,7 +11,7 @@ Set-Location $root
 
 python -m pip install -q -r requirements-build.txt
 if (Test-Path dist\PCCleaner) { Remove-Item -Recurse -Force dist\PCCleaner }
-python -m PyInstaller --noconfirm --windowed --name PCCleaner --add-data "pccleaner/web;pccleaner/web" run.py
+python -m PyInstaller --noconfirm --windowed --name PCCleaner --collect-submodules pccleaner --add-data "pccleaner/web;pccleaner/web" run.py
 if ($LASTEXITCODE) { throw "PyInstaller failed" }
 
 $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
