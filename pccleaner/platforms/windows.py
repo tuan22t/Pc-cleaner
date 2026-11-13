@@ -9,7 +9,7 @@ import os
 import time
 import winreg
 
-from .. import db
+from .. import APP_NAME, db
 from pathlib import Path
 
 from ..junk_base import Category, env, register_source
@@ -80,7 +80,7 @@ def _win_items() -> list[dict]:
             label, why = classify(name, str(cmd))
             items.append({
                 "id": f"run|{hive_name}|{sub}|{name}", "kind": "run", "name": name, "command": str(cmd),
-                "where": f"Khởi động cùng Windows ({'mọi người dùng' if hive_name == 'HKLM' else 'tài khoản này'})",
+                "where": "Khởi động cùng Windows (mọi người dùng)" if hive_name == "HKLM" else "Khởi động cùng Windows (tài khoản này)",
                 "enabled": _approved_enabled(hive_name, sub, name), "admin": hive_name == "HKLM",
                 "label": label, "why": why,
             })
@@ -145,7 +145,7 @@ def _win_items() -> list[dict]:
         label, why = classify(s.get("display", ""), s.get("name", ""), p)
         items.append({
             "id": sid, "kind": "service", "name": s.get("display") or s["name"], "command": s.get("path") or "",
-            "where": f"Dịch vụ chạy nền ({'đang chạy' if s.get('state') == 'Running' else 'đang dừng'})",
+            "where": "Dịch vụ chạy nền (đang chạy)" if s.get("state") == "Running" else "Dịch vụ chạy nền (đang dừng)",
             "enabled": s.get("mode") == "Auto", "admin": True, "label": label, "why": why,
         })
     return items
@@ -180,7 +180,7 @@ def create_restore_point() -> dict:
     try:
         _ps_admin(
             "Enable-ComputerRestore -Drive \"$env:SystemDrive\\\" -ErrorAction SilentlyContinue;"
-            "Checkpoint-Computer -Description 'PC Cleaner - truoc khi tat chuong trinh khoi dong' -RestorePointType MODIFY_SETTINGS"
+            f"Checkpoint-Computer -Description '{APP_NAME} - before turning off startup programs' -RestorePointType MODIFY_SETTINGS"
         )
         db.set_setting("last_restore_point", time.time())
         return {"ok": True}

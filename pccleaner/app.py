@@ -7,7 +7,8 @@ import threading
 import time
 import webbrowser
 
-from . import __version__, paths
+from . import APP_NAME, __version__, paths
+from .i18n import _
 from . import server
 from .server import start_server
 
@@ -29,7 +30,7 @@ def _startup_recovery() -> None:
     try:
         r = quarantine.recover()
         if any(r.values()):
-            _say(f"Đã phục hồi sau lần tắt đột ngột: {r}")
+            _say(_("Đã phục hồi sau lần tắt đột ngột: {0}", r))
         scanner.cleanup_unfinished()
     except Exception:  # noqa: BLE001 - recovery must never stop the app from opening
         server._log_exc()
@@ -41,33 +42,33 @@ def _schedule_self_check() -> None:
     try:
         r = scheduler.self_check()
         if r.get("fixed"):
-            _say("Đã cập nhật lịch dọn tự động theo vị trí mới của ứng dụng.")
+            _say(_("Đã cập nhật lịch dọn tự động theo vị trí mới của ứng dụng."))
     except Exception:  # noqa: BLE001
         server._log_exc()
 
 
 def _already_running() -> None:
-    msg = "PC Cleaner đang chạy rồi. Hãy dùng cửa sổ đang mở (hoặc đợi lượt dọn tự động chạy xong)."
+    msg = _("{0} đang chạy rồi. Hãy dùng cửa sổ đang mở (hoặc đợi lượt dọn tự động chạy xong).", APP_NAME)
     _say(msg, err=True)
     try:
         if paths.IS_WINDOWS:
             import ctypes
 
-            ctypes.windll.user32.MessageBoxW(None, msg, "PC Cleaner", 0x40)
+            ctypes.windll.user32.MessageBoxW(None, msg, APP_NAME, 0x40)
         elif paths.IS_MAC:
             import subprocess
 
-            subprocess.run(["osascript", "-e", f'display alert "PC Cleaner" message "{msg}"'], timeout=60)
+            subprocess.run(["osascript", "-e", f'display alert "{APP_NAME}" message "{msg}"'], timeout=60)
     except Exception:  # noqa: BLE001
         pass
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="pccleaner", description="Dọn dẹp máy tính")
-    ap.add_argument("--browser", action="store_true", help="mở trong trình duyệt thay vì cửa sổ riêng")
-    ap.add_argument("--headless", action="store_true", help="chỉ chạy máy chủ (dùng cho kiểm thử)")
+    ap = argparse.ArgumentParser(prog="pccleaner", description=_("Dọn dẹp máy tính"))
+    ap.add_argument("--browser", action="store_true", help=_("mở trong trình duyệt thay vì cửa sổ riêng"))
+    ap.add_argument("--headless", action="store_true", help=_("chỉ chạy máy chủ (dùng cho kiểm thử)"))
     ap.add_argument("--port", type=int, default=0)
-    ap.add_argument("--auto-clean", action="store_true", help="dọn dẹp tự động theo lịch rồi thoát")
+    ap.add_argument("--auto-clean", action="store_true", help=_("dọn dẹp tự động theo lịch rồi thoát"))
     args = ap.parse_args(argv)
 
     if args.auto_clean:
@@ -88,20 +89,20 @@ def main(argv: list[str] | None = None) -> int:
     threading.Thread(target=_schedule_self_check, daemon=True).start()
 
     httpd, url, _token = start_server(args.port)
-    _say(f"PC Cleaner {__version__} đang chạy tại {url}")
+    _say(_("{0} {1} đang chạy tại {2}", APP_NAME, __version__, url))
 
     if not args.browser and not args.headless:
         try:
             import webview  # type: ignore
 
             server.window = webview.create_window(
-                "PC Cleaner – Dọn dẹp máy tính", url, width=1200, height=800, min_size=(900, 600)
+                f"{APP_NAME} – {_('Dọn dẹp máy tính')}", url, width=1200, height=800, min_size=(900, 600)
             )
             webview.start()
             httpd.shutdown()
             return 0
         except ImportError:
-            _say("Chưa cài pywebview, mở bằng trình duyệt.", err=True)
+            _say(_("Chưa cài pywebview, mở bằng trình duyệt."), err=True)
     if not args.headless:
         webbrowser.open(url)
     try:

@@ -5,6 +5,7 @@ import os
 import string
 import sys
 from pathlib import Path
+from .i18n import _
 
 IS_WINDOWS = sys.platform.startswith("win")
 IS_MAC = sys.platform == "darwin"
@@ -175,7 +176,7 @@ def _find_cloud_roots(home: Path) -> list[tuple[str, str]]:
         cs = home / "Library" / "CloudStorage"
         if cs.is_dir():
             for child in cs.iterdir():
-                found.append((str(child), child.name.split("-")[0] or "Đám mây"))
+                found.append((str(child), child.name.split("-")[0] or _("Đám mây")))
     return [(_norm(p), label) for p, label in found]
 
 
@@ -200,17 +201,17 @@ def protection_reason(path: str | os.PathLike) -> str | None:
     try:
         candidates.add(_norm(os.path.realpath(path)))
     except (OSError, ValueError):
-        return "Không xác định được vị trí thật của file"
+        return _("Không xác định được vị trí thật của file")
     for p in candidates:
         # Never touch a drive/volume root itself.
         if os.path.dirname(p) == p:
-            return "Thư mục gốc của ổ đĩa"
+            return _("Thư mục gốc của ổ đĩa")
         for root in roots:
             if p == root or p.startswith(root + os.sep):
-                return "Thư mục hệ thống/chương trình được bảo vệ"
+                return _("Thư mục hệ thống/chương trình được bảo vệ")
         pkg = package_reason(p)
         if pkg:
-            return f"Nằm trong {pkg}: dọn riêng một file sẽ làm hỏng cả gói"
+            return _("Nằm trong {0}: dọn riêng một file sẽ làm hỏng cả gói", _(pkg))
     return None
 
 
@@ -322,12 +323,12 @@ def list_locations() -> list[dict]:
     import shutil
 
     locs: list[dict] = []
-    candidates: list[tuple[str, str]] = [(str(Path.home()), "Thư mục cá nhân")]
+    candidates: list[tuple[str, str]] = [(str(Path.home()), _("Thư mục cá nhân"))]
     if IS_WINDOWS:
         for letter in string.ascii_uppercase:
             root = f"{letter}:\\"
             if os.path.exists(root):
-                candidates.append((root, f"Ổ {letter}:"))
+                candidates.append((root, _("Ổ {0}:", letter)))
     elif IS_MAC:
         candidates.append(("/", "Macintosh HD"))
         if os.path.isdir("/Volumes"):
@@ -336,7 +337,7 @@ def list_locations() -> list[dict]:
                 if os.path.ismount(full) and os.path.realpath(full) != "/":
                     candidates.append((full, name))
     else:
-        candidates.append(("/", "Hệ thống (/)"))
+        candidates.append(("/", _("Hệ thống (/)")))
     for path, label in candidates:
         try:
             du = shutil.disk_usage(path)

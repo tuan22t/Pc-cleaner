@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+import time
 from pathlib import Path
 
-from . import paths
+from . import APP_NAME, paths
+from .i18n import _
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -132,6 +134,9 @@ MIGRATIONS: list[str] = [
     "ALTER TABLE dirs ADD COLUMN fdir INTEGER;"
     "UPDATE dirs SET fscan=scan_id, fdir=id;"
     "CREATE INDEX IF NOT EXISTS dirs_src ON dirs(fscan, fdir, scan_id);",
+    # 6: used space of each drive, one reading a day, for the Dashboard history chart.
+    "CREATE TABLE IF NOT EXISTS disk_history (path TEXT NOT NULL, day TEXT NOT NULL, ts REAL NOT NULL,"
+    " total INTEGER NOT NULL, used INTEGER NOT NULL, PRIMARY KEY (path, day));",
 ]
 # Queries on size can use the files_big index only when they repeat this
 # condition literally (SQLite does not match it against a bound parameter).
@@ -144,15 +149,57 @@ class NewerDatabaseError(RuntimeError):
     pass
 
 
+def _statements(script: str) -> list[str]:
+    out, buf = [], ""
+    for part in script.split(";"):
+        buf += part + ";"
+        if sqlite3.complete_statement(buf):
+            if buf.strip(" \n;"):
+                out.append(buf)
+            buf = ""
+    return out
+
+
 def _migrate(conn: sqlite3.Connection) -> None:
-    current = conn.execute("PRAGMA user_version").fetchone()[0]
-    if current > SCHEMA_VERSION:
+    """Bring the schema up to date. Several threads or processes (the window and
+    a scheduled run) may open a fresh database at once: the write lock is taken
+    before the version is read, so each upgrade runs exactly once."""
+    if conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION:
+        return
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        current = conn.execute("PRAGMA user_version").fetchone()[0]
+        if current > SCHEMA_VERSION:
+            raise NewerDatabaseError()
+        for version in range(current + 1, SCHEMA_VERSION + 1):
+            for stmt in _statements(MIGRATIONS[version - 1]):
+                conn.execute(stmt)
+        conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+        conn.execute("COMMIT")
+    except NewerDatabaseError:
+        conn.execute("ROLLBACK")
+        conn.close()
         # Written by a newer version of the app: refuse rather than risk damaging it.
+        # (The message is looked up only now: that may open the database again.)
         raise NewerDatabaseError(
-            "Dữ liệu được tạo bởi phiên bản PC Cleaner mới hơn. Hãy cài lại phiên bản mới nhất."
-        )
-    for version in range(current + 1, SCHEMA_VERSION + 1):
-        conn.executescript("BEGIN;" + MIGRATIONS[version - 1] + f";PRAGMA user_version={version};COMMIT;")
+            _("Dữ liệu được tạo bởi phiên bản {0} mới hơn. Hãy cài lại phiên bản mới nhất.", APP_NAME)
+        ) from None
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
+
+
+def _wal(conn: sqlite3.Connection) -> None:
+    """Switch to WAL. On a brand-new file, SQLite refuses this at once ("database is
+    locked", without waiting) while another connection is setting it up: retry."""
+    for attempt in range(100):
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            return
+        except sqlite3.OperationalError:
+            if attempt == 99:
+                raise
+            time.sleep(0.05)
 
 
 def connect() -> sqlite3.Connection:
@@ -165,7 +212,7 @@ def connect() -> sqlite3.Connection:
     if conn is None or getattr(_local, "path", None) != db_path():
         conn = sqlite3.connect(db_path(), timeout=30)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
+        _wal(conn)
         conn.execute("PRAGMA synchronous=FULL")
         _migrate(conn)
         _local.conn = conn
@@ -177,6 +224,9 @@ def reset_for_tests(path: Path) -> None:
     global _db_path
     _db_path = path
     _local.conn = None
+    from . import i18n
+
+    i18n.reset()
 
 
 def get_setting(key: str, default=None):

@@ -17,7 +17,8 @@ import sys
 import time
 from pathlib import Path
 
-from . import db, junk, paths, quarantine
+from . import APP_NAME, db, junk, paths, quarantine
+from .i18n import _
 
 TASK_NAME = r"PCCleaner\AutoClean"
 LAUNCH_LABEL = "com.pccleaner.autoclean"
@@ -88,7 +89,7 @@ def _register(cfg: dict) -> None:
         if r.returncode != 0 and "already" not in r.stderr.lower():
             raise RuntimeError(r.stderr.strip()[:300])
     else:
-        raise RuntimeError("Chỉ hỗ trợ Windows và macOS")
+        raise RuntimeError(_("Chỉ hỗ trợ Windows và macOS"))
 
 
 def _unregister() -> None:
@@ -152,14 +153,14 @@ def health(cfg: dict | None = None) -> dict:
         return {"ok": True, "problem": None}
     if _translocated():
         return {"ok": False, "problem": "translocated",
-                "message": "Hãy kéo PC Cleaner vào thư mục Applications rồi mở lại, lịch dọn tự động mới chạy được."}
+                "message": _("Hãy kéo {0} vào thư mục Applications rồi mở lại, lịch dọn tự động mới chạy được.", APP_NAME)}
     reg = _registered_command()
     if reg is None:
         return {"ok": False, "problem": "missing",
-                "message": "Lịch dọn tự động đã bị xóa khỏi hệ thống. Bấm Lưu để đăng ký lại."}
+                "message": _("Lịch dọn tự động đã bị xóa khỏi hệ thống. Bấm Lưu để đăng ký lại.")}
     if not _same_command(reg, subprocess.list2cmdline(_command())):
         return {"ok": False, "problem": "moved",
-                "message": "Ứng dụng đã được chuyển sang chỗ khác. Bấm Lưu để cập nhật lịch dọn tự động."}
+                "message": _("Ứng dụng đã được chuyển sang chỗ khác. Bấm Lưu để cập nhật lịch dọn tự động.")}
     return {"ok": True, "problem": None}
 
 
@@ -186,7 +187,7 @@ def save(cfg_in: dict) -> dict:
     cfg = dict(DEFAULTS)
     cfg.update({k: cfg_in[k] for k in DEFAULTS if k in cfg_in})
     if cfg["frequency"] not in ("daily", "weekly", "monthly"):
-        raise ValueError("Tần suất không hợp lệ")
+        raise ValueError(_("Tần suất không hợp lệ"))
     cfg["hour"] = max(0, min(23, int(cfg["hour"])))
     cfg["purge_days"] = max(0, min(365, int(cfg["purge_days"])))
     cfg["enabled"] = bool(cfg["enabled"])
@@ -216,4 +217,10 @@ def run_auto_clean(cancel=None, progress=None, on_progress=None) -> dict:
     if days > 0:
         result["purged_bytes"] = quarantine.purge_older_than(days)["freed"]
     db.set_setting("schedule_last_run", json.dumps(result))
+    try:
+        from . import dashboard
+
+        dashboard.record_disks()
+    except Exception:  # noqa: BLE001 - history only
+        pass
     return result

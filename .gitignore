@@ -5,3 +5,5 @@ dist/
 *.spec
 .venv/
 tests/_tmp/
+.coverage
+screenshots/

@@ -18,6 +18,7 @@ import time
 from dataclasses import dataclass
 
 from . import paths, platforms, quarantine
+from .i18n import _
 from .junk_base import SOURCES, Category  # noqa: F401 - Category is part of this module's API
 
 
@@ -77,7 +78,7 @@ def scan(cancel: threading.Event | None = None, on_progress=None) -> list[dict]:
     cats = categories()
     progress = JunkProgress(total=len(cats))
     for c in cats:
-        progress.stage = c.name
+        progress.stage = _(c.name)
         if on_progress:
             on_progress(progress)
         size = count = 0
@@ -90,6 +91,11 @@ def scan(cancel: threading.Event | None = None, on_progress=None) -> list[dict]:
             "locations": c.roots,
         })
         progress.done = len(out)
+    if cancel is None or not cancel.is_set():
+        from . import dashboard
+
+        dashboard.remember("last_junk", {"bytes": sum(c["size"] for c in out), "files": sum(c["count"] for c in out),
+                                         "safe_bytes": sum(c["size"] for c in out if c["label"] == "safe")})
     return out
 
 
@@ -108,7 +114,8 @@ def clean(ids: list[str], cancel: threading.Event | None = None, progress=None, 
         files = [p for p, _s in _iter_files(c, cancel)]
         if not files:
             continue
-        r = quarantine.quarantine(files, f"Rác hệ thống: {c.name}", allow_roots=c.roots, log_failures=False,
+        # The reason is stored in Vietnamese and translated when shown.
+        r = quarantine.quarantine(files, ": ".join(("Rác hệ thống", c.name)), allow_roots=c.roots, log_failures=False,
                                   cancel=cancel, progress=progress, on_progress=on_progress)
         batch_ids.append(r["batch_id"])
         skipped = len(r["failed"])

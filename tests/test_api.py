@@ -17,6 +17,7 @@ _BASE = Path(__file__).resolve().parent / "_tmp"
 _BASE.mkdir(exist_ok=True)
 TMP = tempfile.mkdtemp(dir=_BASE)
 os.environ.setdefault("PCCLEANER_DATA_DIR", os.path.join(TMP, "data"))
+os.environ.setdefault("PCCLEANER_LANG", "vi")  # messages are checked in Vietnamese
 
 from pccleaner import db, server  # noqa: E402
 
@@ -149,7 +150,8 @@ class ApiTest(unittest.TestCase):
             if self.call("GET", "job")["state"] != "running":
                 break
             time.sleep(0.02)
-        self.assertIn(self.call("GET", "job")["state"], ("done", "cancelled"))
+        st = self.call("GET", "job")
+        self.assertIn(st["state"], ("done", "cancelled"), st)
 
     def test_settings_screens_load(self):
         sched = self.call("GET", "schedule")

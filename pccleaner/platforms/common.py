@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 from .. import paths
+from ..i18n import _
 
 
 def _run(cmd: list[str], timeout: int = 60) -> subprocess.CompletedProcess:
@@ -46,13 +47,13 @@ def _ps_admin(script: str, timeout: int = 300) -> dict:
         _ps(outer, timeout)
     except RuntimeError as e:
         if "canceled" in str(e).lower() or "hủy" in str(e).lower() or "1223" in str(e):
-            raise PermissionError("Anh/chị đã từ chối cấp quyền quản trị, nên chưa thay đổi gì.")
+            raise PermissionError(_("Anh/chị đã từ chối cấp quyền quản trị, nên chưa thay đổi gì."))
         raise
     if not out.exists():
-        raise PermissionError("Không nhận được kết quả từ tác vụ cần quyền quản trị.")
+        raise PermissionError(_("Không nhận được kết quả từ tác vụ cần quyền quản trị."))
     data = json.loads(out.read_text(encoding="utf-8-sig") or "{}")
     if not data.get("ok", False):
-        raise RuntimeError(data.get("error") or "Không thực hiện được")
+        raise RuntimeError(data.get("error") or _("Không thực hiện được"))
     return data
 
 

@@ -15,6 +15,7 @@ from .. import db
 from ..junk_base import Category, register_source
 from ..startup_base import Provider, _change, classify, register_provider
 from .common import _run
+from ..i18n import _
 
 def _uid() -> int:
     return os.getuid()
@@ -109,7 +110,7 @@ def _osascript_admin(shell: str) -> None:
     r = _run(["osascript", "-e", f'do shell script "{esc}" with administrator privileges'], timeout=300)
     if r.returncode != 0:
         if "-128" in r.stderr:
-            raise PermissionError("Anh/chị đã hủy nhập mật khẩu quản trị, nên chưa thay đổi gì.")
+            raise PermissionError(_("Anh/chị đã hủy nhập mật khẩu quản trị, nên chưa thay đổi gì."))
         raise RuntimeError(r.stderr.strip()[:300])
 
 
@@ -121,7 +122,7 @@ def _mac_set(item: dict, enable: bool) -> None:
             orig = _change(item["id"]) or {}
             path = orig.get("path") or item.get("command")
             if not path:
-                raise RuntimeError("Không còn biết đường dẫn của mục này")
+                raise RuntimeError(_("Không còn biết đường dẫn của mục này"))
             js = (f"Application('System Events').loginItems.push(Application('System Events').LoginItem("
                   f"{{path: {json.dumps(path)}, hidden: {json.dumps(bool(orig.get('hidden')))}}}))")
         else:
@@ -129,11 +130,11 @@ def _mac_set(item: dict, enable: bool) -> None:
                   "it.delete()")
         r = _run(["osascript", "-l", "JavaScript", "-e", js], timeout=30)
         if r.returncode != 0:
-            raise RuntimeError(r.stderr.strip()[:300] or "osascript lỗi")
+            raise RuntimeError(r.stderr.strip()[:300] or _("osascript lỗi"))
         return
     _k, domain, label, plist = item["id"].split("|", 3)
     if not _SAFE_LABEL.match(label) or not (domain == "system" or _SAFE_DOMAIN.match(domain)):
-        raise ValueError("Tên mục khởi động có ký tự lạ, ứng dụng không thay đổi mục này")
+        raise ValueError(_("Tên mục khởi động có ký tự lạ, ứng dụng không thay đổi mục này"))
     target = f"{domain}/{label}"
     if domain == "system":
         # Runs as root: every value is quoted, never pasted into the command as-is.
@@ -145,7 +146,7 @@ def _mac_set(item: dict, enable: bool) -> None:
         return
     r = _run(["launchctl", "enable" if enable else "disable", target])
     if r.returncode != 0:
-        raise RuntimeError(r.stderr.strip()[:300] or "launchctl lỗi")
+        raise RuntimeError(r.stderr.strip()[:300] or _("launchctl lỗi"))
     if enable:
         _run(["launchctl", "bootstrap", domain, plist])  # may already be loaded; that's fine
     else:
