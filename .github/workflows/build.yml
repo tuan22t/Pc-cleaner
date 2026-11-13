@@ -61,9 +61,15 @@ jobs:
           python - <<'PY'
           import os, sys
           from pccleaner import ed25519, updater
-          k = os.environ.get("UPDATE_SIGNING_KEY", "")
-          ok = len(k) == 64 and ed25519.public_key(bytes.fromhex(k)).hex() == updater.UPDATE_PUBLIC_KEY
-          print("UPDATE_SIGNING_KEY matches the app's public key" if ok else "UPDATE_SIGNING_KEY is missing or does not match")
+          k = os.environ.get("UPDATE_SIGNING_KEY", "").strip().lower()
+          hexok = len(k) == 64 and all(c in "0123456789abcdef" for c in k)
+          ok = hexok and ed25519.public_key(bytes.fromhex(k)).hex() == updater.UPDATE_PUBLIC_KEY
+          if ok:
+              print("UPDATE_SIGNING_KEY matches the app's public key")
+          elif k == updater.UPDATE_PUBLIC_KEY:
+              print("UPDATE_SIGNING_KEY holds the PUBLIC key; it must hold the private one")
+          else:
+              print(f"UPDATE_SIGNING_KEY does not match: {len(k)} characters, 64 hex digits expected, hex={hexok}")
           sys.exit(0 if ok else 1)
           PY
       - name: The releases token is set
@@ -194,9 +200,15 @@ jobs:
           python - <<'PY'
           import os, sys
           from pccleaner import ed25519, updater
-          k = os.environ.get("UPDATE_SIGNING_KEY", "")
-          ok = len(k) == 64 and ed25519.public_key(bytes.fromhex(k)).hex() == updater.UPDATE_PUBLIC_KEY
-          print("UPDATE_SIGNING_KEY matches the app's public key" if ok else "UPDATE_SIGNING_KEY is missing or does not match")
+          k = os.environ.get("UPDATE_SIGNING_KEY", "").strip().lower()
+          hexok = len(k) == 64 and all(c in "0123456789abcdef" for c in k)
+          ok = hexok and ed25519.public_key(bytes.fromhex(k)).hex() == updater.UPDATE_PUBLIC_KEY
+          if ok:
+              print("UPDATE_SIGNING_KEY matches the app's public key")
+          elif k == updater.UPDATE_PUBLIC_KEY:
+              print("UPDATE_SIGNING_KEY holds the PUBLIC key; it must hold the private one")
+          else:
+              print(f"UPDATE_SIGNING_KEY does not match: {len(k)} characters, 64 hex digits expected, hex={hexok}")
           sys.exit(0 if ok else 1)
           PY
       - name: The tag must match the app's version

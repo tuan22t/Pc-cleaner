@@ -45,7 +45,7 @@ def main() -> int:
         print("private (secret UPDATE_SIGNING_KEY):", secret.hex())
         print("public  (updater.UPDATE_PUBLIC_KEY):", ed25519.public_key(secret).hex())
         return 0
-    key = os.environ.get("UPDATE_SIGNING_KEY", "")
+    key = os.environ.get("UPDATE_SIGNING_KEY", "").strip().lower()
     if len(key) != 64:
         sys.exit("UPDATE_SIGNING_KEY is not set")
     updater.parse_version(a.version)
