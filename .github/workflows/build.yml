@@ -128,7 +128,9 @@ jobs:
     # run them for main, release tags and a manual run, not on every PR push.
     if: github.event_name != 'pull_request'
     needs: test
-    runs-on: macos-latest
+    # The build makes a universal2 app on either chip; the Intel pool is the one
+    # GitHub has had free most often (arm64 runners were not handed out on 2026-11-13).
+    runs-on: macos-15-intel
     env:
       MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
       MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
