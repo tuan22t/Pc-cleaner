@@ -210,7 +210,45 @@ function renderSettings() {
   const s = state.info.settings;
   $("#setLang").value = s.lang; $("#setTheme").value = s.theme;
   $("#aboutInfo").innerHTML = t("Phiên bản {0} · Thư mục dữ liệu: {1}", esc(state.info.version), esc(state.info.data_dir));
+  $("#macUninstall").classList.toggle("hidden", state.info.platform !== "mac");
+  renderUpdate();
 }
+
+// ---------- updates: nothing is downloaded or installed without the user's click ----------
+async function renderUpdate() {
+  let u; try { u = state.update = await api("update"); } catch (e) { return; }
+  $("#updChannel").value = u.channel; $("#updAuto").checked = u.auto_check;
+  ["#updChannel", "#updAuto", "#updCheck"].forEach((s) => $(s).disabled = !u.configured);
+  $("#updGet").classList.toggle("hidden", !u.available);
+  $("#updStatus").textContent = !u.configured ? t("Chưa bật trong bản này")
+    : u.available ? t("Đã có phiên bản {0} ({1})", u.available.version, fmt(u.available.size))
+    : u.last_check ? t("Đang dùng bản mới nhất (kiểm tra lúc {0})", fmtDate(u.last_check)) : t("Chưa kiểm tra");
+}
+const saveUpdate = async (body) => { try { await api("update-settings", body); renderUpdate(); } catch (e) { toast(e.message, { err: true }); } };
+$("#updChannel").onchange = (e) => saveUpdate({ channel: e.target.value });
+$("#updAuto").onchange = (e) => saveUpdate({ auto_check: e.target.checked });
+$("#updCheck").onclick = async () => {
+  try { await api("update-check", {}); await renderUpdate(); if (!state.update.available) toast(t("Đang dùng bản mới nhất.")); }
+  catch (e) { toast(t("Không kiểm tra được bản cập nhật: {0}", e.message), { err: true }); }
+};
+$("#updGet").onclick = async () => {
+  const a = state.update.available; const notes = a.notes[I18N.lang] || a.notes.vi || "";
+  const ok = await dialog(t("Cập nhật lên phiên bản {0}", a.version),
+    (notes ? `<p>${esc(notes)}</p>` : "") + `<p>${esc(t("Ứng dụng sẽ tải bản mới ({0}), kiểm tra chữ ký rồi mới cài. Dữ liệu, nhật ký và khu cách ly được giữ nguyên.", fmt(a.size)))}</p>`,
+    t("Tải và cài"));
+  if (!ok) return;
+  try { await api("update-download", {}); pollJob(); } catch (e) { toast(e.message, { err: true }); }
+};
+async function finishUpdate(r) {
+  try {
+    const x = await api("update-install", { path: r.path });
+    if (x.drag) dialog(t("Cài bản mới"), `<p>${esc(t("Kéo {0} vào thư mục Applications để thay bản cũ, rồi mở lại ứng dụng.", state.info.app_name))}</p>`, t("Đã hiểu"), null);
+    else toast(t("Đang cài bản mới. Ứng dụng sẽ tự mở lại."));
+  } catch (e) { toast(e.message, { err: true }); }
+}
+$("#beforeUninstall").onclick = async () => {
+  try { const r = await api("before-uninstall", {}); toast(r.message); } catch (e) { toast(e.message, { err: true }); }
+};
 $("#setLang").onchange = (e) => setLanguage(e.target.value).catch((er) => toast(er.message, { err: true }));
 $("#setTheme").onchange = async (e) => {
   try { state.info.settings = await api("settings", { theme: e.target.value }); applyTheme(state.info.settings.theme); if (state.view === "home") renderHome(); }
@@ -278,7 +316,12 @@ function pollJob() {
     if (busy) {
       bar.classList.remove("hidden");
       const p = j.progress || {}; const el = dur(Date.now() / 1000 - j.started);
-      if (j.kind === "scan") {
+      if (j.kind === "update") {
+        const pct = p.total ? Math.floor(100 * p.done / p.total) : 0;
+        $("#jobTitle").textContent = `${t("Đang tải bản cập nhật")} (${pct}%)`;
+        $("#jobDetail").textContent = `${el} · ${fmt(p.done || 0)} / ${fmt(p.total || 0)}`;
+        $(".progress").classList.remove("indeterminate"); $("#jobProgress").style.width = pct + "%";
+      } else if (j.kind === "scan") {
         $("#jobTitle").textContent = t("Đang quét {0} — đã tìm thấy {1} {1|file|files} ({2})", j.root, num(p.files), fmt(p.bytes || 0));
         $("#jobDetail").textContent = `${el} · ${p.current || ""}`;
         $(".progress").classList.add("indeterminate"); $("#jobProgress").style.width = "30%";
@@ -306,6 +349,7 @@ function pollJob() {
     else if (j.state === "done" && j.kind === "duplicates") { toast(j.result ? t("Tìm thấy {0} {0|nhóm|nhóm} file trùng.", j.result) : t("Không có file trùng nào. Máy anh/chị khá gọn!")); if (state.view === "dups") renderDups(); }
     else if (j.state === "done" && j.kind === "similar") { toast(j.result ? t("Tìm thấy {0} {0|nhóm|nhóm} ảnh giống nhau.", j.result) : t("Không có ảnh nào giống nhau.")); if (state.view === "similar") renderSimilar(); }
     else if (j.state === "done" && j.kind === "junk") { state.junk = j.result; renderJunk(); }
+    else if (j.state === "done" && j.kind === "update") finishUpdate(j.result);
     else if (j.state === "cancelled") toast(t("Đã dừng lại."));
     else if (j.state === "error") toast(t("Có lỗi: {0}", j.error), { err: true });
   };
@@ -745,4 +789,5 @@ window.addEventListener("resize", () => { if (state.view === "usage") renderUsag
   applyAppName();
   await loadScans().catch((e) => toast(e.message, { err: true })); refreshBadge(); render("home"); pollJob();
   if (state.info && !state.info.settings.onboarded) openGuide();
+  else api("update").then((u) => { if (u.available) toast(t("Đã có phiên bản mới {0}.", u.available.version), { action: t("Xem"), onAction: () => show("settings") }); }).catch(() => {});
 })();

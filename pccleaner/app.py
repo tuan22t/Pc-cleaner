@@ -63,6 +63,12 @@ def _already_running() -> None:
         pass
 
 
+def _update_check() -> None:
+    from . import updater
+
+    updater.check_if_due()  # at most once a day, never downloads by itself
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="pccleaner", description=_("Dọn dẹp máy tính"))
     ap.add_argument("--browser", action="store_true", help=_("mở trong trình duyệt thay vì cửa sổ riêng"))
@@ -95,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     _startup_recovery()
     threading.Thread(target=_schedule_self_check, daemon=True).start()
+    threading.Thread(target=_update_check, daemon=True).start()
 
     httpd, url, _token = start_server(args.port)
     _say(_("{0} {1} đang chạy tại {2}", APP_NAME, __version__, url))

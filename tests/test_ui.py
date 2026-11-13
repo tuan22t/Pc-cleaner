@@ -104,9 +104,16 @@ class UiTest(unittest.TestCase):
         self.page.wait_for_selector(f"#view-{view}.active")
         self.page.wait_for_timeout(250)
 
-    def wait_job(self):
+    def wait_job(self, until=None):
+        """Wait for the background job. ``until``: a condition to wait for as well,
+        because the job may not have started yet when the progress bar is checked."""
         self.page.wait_for_selector("#jobBar.hidden", state="attached", timeout=30_000)
         self.page.wait_for_timeout(300)
+        for _ in range(300):
+            if until is None or until():
+                return
+            self.page.wait_for_timeout(100)
+        self.page.wait_for_selector("#jobBar.hidden", state="attached", timeout=30_000)
 
     def shot(self, name):
         if SHOTS:
@@ -172,12 +179,12 @@ class UiTest(unittest.TestCase):
         self.page.wait_for_selector("#modal:not(.hidden)")
         self.assertIn("Khu cách ly", self.page.inner_text("#modal"))
         self.page.click("#modalOk")
-        self.wait_job()
+        self.wait_job(until=lambda: not os.path.exists(target))
         self.assertFalse(os.path.exists(target))
         self.go("quarantine")
         self.page.wait_for_selector("[data-restore]")
         self.page.click("[data-restore]")
-        self.wait_job()
+        self.wait_job(until=lambda: os.path.exists(target))
         self.assertTrue(os.path.exists(target))
 
     def test_6_screens_in_vietnamese(self):

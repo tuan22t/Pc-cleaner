@@ -62,6 +62,8 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; After an update started from inside the app (/relaunch=1), open the app again.
+Filename: "{app}\{#AppExe}"; Flags: nowait; Check: Relaunch
 
 [UninstallRun]
 ; Take the scheduled cleanup task off Task Scheduler before the program goes.
@@ -72,6 +74,11 @@ Filename: "{app}\{#AppExe}"; Parameters: "--before-uninstall"; Flags: runhidden 
 Type: filesandordirs; Name: "{app}"
 
 [Code]
+function Relaunch(): Boolean;
+begin
+  Result := WizardSilent() and (ExpandConstant('{param:relaunch|0}') = '1');
+end;
+
 function InitializeUninstall(): Boolean;
 var
   Data: String;

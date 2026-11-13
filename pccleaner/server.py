@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .platforms.common import background_thread
-from . import APP_NAME, __version__, dashboard, db, duplicates, i18n, junk, organizer, paths, quarantine, scanner, scheduler, similar, startup
+from . import APP_NAME, __version__, dashboard, db, duplicates, i18n, junk, organizer, paths, quarantine, scanner, scheduler, similar, startup, updater
 from .i18n import _
 
 WEB_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).parent.parent)) / "pccleaner" / "web"
@@ -388,6 +388,24 @@ def route(method: str, path: str, q: dict, body: dict):
     if key == ("POST", "purge"):
         bid = str(body["batch_id"])
         return jobs.action(_("Đang xóa vĩnh viễn"), lambda c, p, u: quarantine.purge_batch(bid, c, p, u))
+    if key == ("GET", "update"):
+        return updater.status()
+    if key == ("POST", "update-settings"):
+        return updater.save_settings(body)
+    if key == ("POST", "update-check"):
+        return updater.check()
+    if key == ("POST", "update-download"):
+        jobs.start("update", lambda c, u: updater.download(c, u))
+        return {"ok": True}
+    if key == ("POST", "update-install"):
+        r = updater.install(str(body["path"]))
+        if r.get("quit"):
+            # Leave the installer free to replace the program files.
+            threading.Timer(1.5, lambda: os._exit(0)).start()
+        return r
+    if key == ("POST", "before-uninstall"):
+        scheduler.remove_for_uninstall()
+        return {"message": _("Đã gỡ lịch dọn tự động. Dữ liệu và khu cách ly vẫn ở {0}", paths.data_dir())}
     if key == ("POST", "reveal"):
         _reveal(str(body["path"]))
         return {"ok": True}
