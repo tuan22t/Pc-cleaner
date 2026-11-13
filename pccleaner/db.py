@@ -121,7 +121,16 @@ def db_path() -> Path:
 MIGRATIONS: list[str] = [
     SCHEMA,                                                            # 1
     "CREATE INDEX IF NOT EXISTS actions_kind ON actions(kind);",       # 2: fast look-up of unfinished moves
+    "ALTER TABLE dirs ADD COLUMN mtime REAL;",                          # 3: folder change time, for quick rescans
+    # 4: index only files of 64 KB or more by size. Most files are small, so
+    # writing a scan (and copying rows on a rescan) is about twice as fast.
+    "DROP INDEX IF EXISTS files_size;"
+    "CREATE INDEX IF NOT EXISTS files_big ON files(scan_id, size) WHERE size >= 65536;",
 ]
+# Queries on size can use the files_big index only when they repeat this
+# condition literally (SQLite does not match it against a bound parameter).
+BIG_FILE = 65536
+BIG_FILE_SQL = "size >= 65536"
 SCHEMA_VERSION = len(MIGRATIONS)
 
 

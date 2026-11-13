@@ -93,7 +93,7 @@ def scan(cancel: threading.Event | None = None, on_progress=None) -> list[dict]:
     return out
 
 
-def clean(ids: list[str]) -> dict:
+def clean(ids: list[str], cancel: threading.Event | None = None, progress=None, on_progress=None) -> dict:
     """Move the files of the chosen categories into quarantine."""
     results = []
     total_moved = total_bytes = total_skipped = 0
@@ -101,14 +101,20 @@ def clean(ids: list[str]) -> dict:
     for c in categories():
         if c.id not in ids:
             continue
-        files = [p for p, _s in _iter_files(c)]
+        if cancel is not None and cancel.is_set():
+            break
+        if progress is not None:
+            progress.stage, progress.done = c.name, 0
+        files = [p for p, _s in _iter_files(c, cancel)]
         if not files:
             continue
-        r = quarantine.quarantine(files, f"Rác hệ thống: {c.name}", allow_roots=c.roots, log_failures=False)
+        r = quarantine.quarantine(files, f"Rác hệ thống: {c.name}", allow_roots=c.roots, log_failures=False,
+                                  cancel=cancel, progress=progress, on_progress=on_progress)
         batch_ids.append(r["batch_id"])
         skipped = len(r["failed"])
         results.append({"id": c.id, "name": c.name, "moved": r["moved"], "bytes": r["bytes"], "skipped": skipped})
         total_moved += r["moved"]
         total_bytes += r["bytes"]
         total_skipped += skipped
-    return {"categories": results, "moved": total_moved, "bytes": total_bytes, "skipped": total_skipped, "batch_ids": batch_ids}
+    return {"categories": results, "moved": total_moved, "bytes": total_bytes, "skipped": total_skipped,
+            "batch_ids": batch_ids, "cancelled": bool(cancel is not None and cancel.is_set())}

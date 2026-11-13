@@ -130,14 +130,14 @@ def record_skipped(why: str) -> None:
     db.set_setting("schedule_last_run", json.dumps({"ts": time.time(), "skipped": why}))
 
 
-def run_auto_clean() -> dict:
+def run_auto_clean(cancel=None, progress=None, on_progress=None) -> dict:
     """What the scheduled task does. Safe junk only; old quarantine is emptied."""
     cfg = get()
     result: dict = {"ts": time.time(), "junk_moved": 0, "junk_bytes": 0, "purged_bytes": 0}
     if cfg.get("junk", True):
         ids = [c["id"] for c in junk.scan() if c["label"] == "safe" and not c["admin"] and c["count"] > 0]
         if ids:
-            r = junk.clean(ids)
+            r = junk.clean(ids, cancel, progress, on_progress)
             result["junk_moved"], result["junk_bytes"] = r["moved"], r["bytes"]
     days = int(cfg.get("purge_days") or 0)
     if days > 0:

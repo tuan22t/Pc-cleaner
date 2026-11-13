@@ -14,6 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from .platforms.common import background_thread
 from . import __version__, duplicates, junk, organizer, paths, quarantine, scanner, scheduler, similar, startup
 
 WEB_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).parent.parent)) / "pccleaner" / "web"
@@ -50,6 +51,7 @@ class JobManager:
             self.state = {"state": "running", "kind": kind, "started": time.time(), **meta}
 
             def run():
+                background_thread()
                 try:
                     result = fn(self.cancel, self._update)
                     self.state.update(state="done", result=result, finished=time.time())
@@ -64,6 +66,15 @@ class JobManager:
 
     def _update(self, progress) -> None:
         self.state["progress"] = dict(progress.__dict__)
+
+    def action(self, label: str, fn) -> dict:
+        """Run a file-changing action in the background, with progress and a Stop button.
+
+        ``fn(cancel, progress, on_progress)``; the UI waits for kind "action".
+        """
+        progress = quarantine.Progress(label)
+        self.start("action", lambda c, u: fn(c, progress, u), label=label)
+        return {"ok": True, "job": True}
 
 
 jobs = JobManager()
@@ -221,7 +232,8 @@ def route(method: str, path: str, q: dict, body: dict):
         if not os.path.isdir(root):
             raise FileNotFoundError(f"Thư mục không tồn tại: {root}")
         progress = scanner.ScanProgress()
-        jobs.start("scan", lambda c, u: scanner.scan(root, progress, c, u), root=root)
+        full = bool(body.get("full"))
+        jobs.start("scan", lambda c, u: scanner.scan(root, progress, c, u, incremental=not full), root=root)
         return {"ok": True}
     if key == ("GET", "scans"):
         return scanner.latest_scans()
@@ -258,10 +270,10 @@ def route(method: str, path: str, q: dict, body: dict):
         jobs.start("junk", lambda c, u: junk.scan(c, u))
         return {"ok": True}
     if key == ("POST", "junk-clean"):
-        ids = body.get("ids") or []
+        ids = [str(i) for i in body.get("ids") or []]
         if not ids:
             raise ValueError("Chưa chọn mục nào")
-        return junk.clean([str(i) for i in ids])
+        return jobs.action("Đang dọn rác hệ thống", lambda c, p, u: junk.clean(ids, c, p, u))
     if key == ("GET", "startup"):
         return {"items": startup.list_items(), "admin": startup.is_admin(),
                 "last_restore_point": scheduler.db.get_setting("last_restore_point")}
@@ -274,7 +286,10 @@ def route(method: str, path: str, q: dict, body: dict):
     if key == ("POST", "organize-preview"):
         return organizer.preview(str(body.get("folder") or ""), bool(body.get("by_year", True)))
     if key == ("POST", "organize-apply"):
-        return organizer.apply(str(body.get("folder") or ""), [str(p) for p in body.get("chosen") or []], bool(body.get("by_year", True)))
+        folder, chosen = str(body.get("folder") or ""), [str(p) for p in body.get("chosen") or []]
+        by_year = bool(body.get("by_year", True))
+        organizer.preview(folder, by_year)  # refuse a bad folder right away, before the job starts
+        return jobs.action("Đang sắp xếp thư mục", lambda c, p, u: organizer.apply(folder, chosen, by_year, c, p, u))
     if key == ("GET", "schedule"):
         cfg = scheduler.get()
         cfg["registered"] = scheduler.is_registered()
@@ -283,28 +298,50 @@ def route(method: str, path: str, q: dict, body: dict):
     if key == ("POST", "schedule"):
         return scheduler.save(body)
     if key == ("POST", "schedule-run"):
-        return scheduler.run_auto_clean()
+        return jobs.action("Đang chạy dọn dẹp tự động", lambda c, p, u: scheduler.run_auto_clean(c, p, u))
     if key == ("POST", "quarantine"):
         files = body.get("paths") or []
         if not isinstance(files, list) or not files:
             raise ValueError("Chưa chọn file nào")
         files = [str(p) for p in files]
-        refused: list[dict] = []
-        if body.get("dup_scan_id") is not None:
-            # Duplicates are re-verified on disk right before anything moves.
-            files, refused = duplicates.check_removal(int(body["dup_scan_id"]), files)
-        elif body.get("similar_scan_id") is not None:
-            files, refused = similar.check_removal(int(body["similar_scan_id"]), files)
-        return quarantine.quarantine(files, str(body.get("reason", "")), refused,
-                                     allow_cloud=bool(body.get("allow_cloud")))
+        reason, allow_cloud = str(body.get("reason", "")), bool(body.get("allow_cloud"))
+        dup_sid, sim_sid = body.get("dup_scan_id"), body.get("similar_scan_id")
+
+        def clean(c, p, u):
+            chosen, refused = files, []
+            if dup_sid is not None:
+                # Duplicates are re-verified on disk right before anything moves.
+                p.stage = "Đang kiểm tra lại nội dung file trùng"
+                u(p)
+                chosen, refused = duplicates.check_removal(int(dup_sid), files)
+            elif sim_sid is not None:
+                chosen, refused = similar.check_removal(int(sim_sid), files)
+            p.stage = "Đang dọn"
+            return quarantine.quarantine(chosen, reason, refused, allow_cloud=allow_cloud,
+                                         cancel=c, progress=p, on_progress=u)
+
+        return jobs.action("Đang dọn", clean)
     if key == ("GET", "batches"):
         return quarantine.batches()
     if key == ("GET", "log"):
         return quarantine.log()
     if key == ("POST", "restore"):
-        return quarantine.restore(str(body["batch_id"]))
+        bids = [str(b) for b in (body.get("batch_ids") or [body["batch_id"]])]
+
+        def undo_all(c, p, u):
+            out = {"restored": 0, "failed": [], "renamed": [], "cancelled": False}
+            for b in bids:
+                r = quarantine.restore(b, c, p, u)
+                out["restored"] += r["restored"]
+                out["failed"] += r["failed"]
+                out["renamed"] += r.get("renamed", [])
+                out["cancelled"] = out["cancelled"] or r["cancelled"]
+            return out
+
+        return jobs.action("Đang trả file về chỗ cũ", undo_all)
     if key == ("POST", "purge"):
-        return quarantine.purge_batch(str(body["batch_id"]))
+        bid = str(body["batch_id"])
+        return jobs.action("Đang xóa vĩnh viễn", lambda c, p, u: quarantine.purge_batch(bid, c, p, u))
     if key == ("POST", "reveal"):
         _reveal(str(body["path"]))
         return {"ok": True}
