@@ -42,7 +42,7 @@ jobs:
           echo "--- this system's own module:"
           python -m coverage report --include="pccleaner/platforms/*.py"
       - name: Rescan of 100,000 files must be 3x faster than the first scan
-        run: python tools/bench_scan.py 100000 3
+        run: python tools/bench_scan.py 100000 3 5
 
   # Checks the release secrets are in place, without printing them (not on pull requests from forks).
   release-setup:

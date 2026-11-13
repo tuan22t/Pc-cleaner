@@ -279,7 +279,12 @@ def prune_scans(root: str, keep: int = KEEP_SCANS_PER_FOLDER) -> int:
     conn = db.connect()
     conn.execute("PRAGMA synchronous=NORMAL")  # old reports only: no need to wait for the disk
     try:
-        return _prune(conn, root, keep)
+        n = _prune(conn, root, keep)
+        if n:
+            # Write the deletions into the database now and shrink the journal file, so
+            # the next scan does not pay for it and the journal does not keep its peak size.
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        return n
     finally:
         conn.execute("PRAGMA synchronous=FULL")
 
