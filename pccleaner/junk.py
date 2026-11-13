@@ -15,10 +15,10 @@ import glob
 import os
 import threading
 import time
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 
-from . import paths, quarantine
+from . import paths, platforms, quarantine
+from .junk_base import SOURCES, Category  # noqa: F401 - Category is part of this module's API
 
 
 @dataclass
@@ -29,73 +29,12 @@ class JunkProgress:
     current: str = ""
 
 
-@dataclass
-class Category:
-    id: str
-    name: str
-    desc: str
-    patterns: list[str]          # folders (glob allowed) whose files are junk
-    label: str = "safe"          # safe | caution
-    min_age_hours: float = 24    # skip files changed more recently (likely in use)
-    file_glob: str | None = None  # only files matching this name pattern
-    admin: bool = False           # usually needs administrator rights
-    roots: list[str] = field(default_factory=list)
-    skip_root: object = None      # optional test(folder name) -> True to leave that folder alone
-
-
-# Caches that belong to macOS itself or to sync services. Moving them while the
-# system or the sync client runs can cause errors or a full re-sync, so they are
-# never offered, even though they are "only" caches.
-_MAC_KEEP_PREFIXES = ("com.apple.", "cloudkit", "familycircle", "geoservices", "com.microsoft.onedrive",
-                      "com.getdropbox.", "com.dropbox.", "com.google.drivefs", "com.box.")
-
-
-def _mac_keep_cache(name: str) -> bool:
-    low = name.lower()
-    return low.startswith(_MAC_KEEP_PREFIXES) or "icloud" in low
-
-
-def _env(name: str, default: str = "") -> str:
-    return os.environ.get(name, default)
-
-
 def categories() -> list[Category]:
-    home = str(Path.home())
+    """Every junk category of this computer, with its folders resolved."""
+    platforms.load()
     cats: list[Category] = []
-    if paths.IS_WINDOWS:
-        local = _env("LOCALAPPDATA", os.path.join(home, "AppData", "Local"))
-        windir = _env("SystemRoot", r"C:\Windows")
-        progdata = _env("ProgramData", r"C:\ProgramData")
-        temp = _env("TEMP", os.path.join(local, "Temp"))
-        cats += [
-            Category("win_user_temp", "File tạm của người dùng", "Thư mục Temp: chương trình tạo ra khi cài đặt, giải nén, xem trước file… rồi bỏ lại.", [temp]),
-            Category("win_temp", "File tạm của Windows", "Thư mục Windows\\Temp.", [os.path.join(windir, "Temp")], admin=True),
-            Category("win_update", "Bản cập nhật Windows đã tải về", "Bộ cài cập nhật đã cài xong; Windows sẽ tải lại nếu cần.", [os.path.join(windir, "SoftwareDistribution", "Download")], min_age_hours=72, admin=True),
-            Category("win_dumps", "File báo lỗi (crash dump)", "Bản ghi bộ nhớ khi chương trình hoặc Windows bị lỗi. Chỉ cần khi gửi cho kỹ thuật viên.", [os.path.join(local, "CrashDumps"), os.path.join(windir, "Minidump"), os.path.join(windir, "LiveKernelReports")], min_age_hours=0),
-            Category("win_wer", "Báo cáo lỗi Windows", "Báo cáo lỗi đã gửi hoặc chờ gửi cho Microsoft.", [os.path.join(local, "Microsoft", "Windows", "WER"), os.path.join(progdata, "Microsoft", "Windows", "WER")], min_age_hours=0),
-            Category("win_thumbs", "Bộ nhớ đệm ảnh thu nhỏ", "Ảnh thu nhỏ trong File Explorer; Windows tự tạo lại khi mở thư mục.", [os.path.join(local, "Microsoft", "Windows", "Explorer")], file_glob="thumbcache_*.db", min_age_hours=0),
-            Category("browser_cache", "Bộ nhớ đệm trình duyệt", "Chrome, Edge, Firefox, Cốc Cốc. Không mất mật khẩu, lịch sử hay dấu trang. Nên đóng trình duyệt trước.", [
-                os.path.join(local, "Google", "Chrome", "User Data", "*", d) for d in ("Cache", "Code Cache", "GPUCache")
-            ] + [
-                os.path.join(local, "Microsoft", "Edge", "User Data", "*", d) for d in ("Cache", "Code Cache", "GPUCache")
-            ] + [
-                os.path.join(local, "CocCoc", "Browser", "User Data", "*", d) for d in ("Cache", "Code Cache", "GPUCache")
-            ] + [os.path.join(local, "Mozilla", "Firefox", "Profiles", "*", "cache2")], min_age_hours=1),
-            Category("win_prefetch", "Prefetch", "Dữ liệu giúp Windows mở chương trình nhanh hơn. Xóa thì lần mở đầu tiên sẽ chậm hơn một chút.", [os.path.join(windir, "Prefetch")], label="caution", min_age_hours=0, admin=True),
-        ]
-    elif paths.IS_MAC:
-        lib = os.path.join(home, "Library")
-        cats += [
-            Category("mac_caches", "Bộ nhớ đệm ứng dụng", "~/Library/Caches của các ứng dụng bên thứ ba: dữ liệu tạm ứng dụng tự tạo lại. Không đụng bộ nhớ đệm của macOS và của ứng dụng đồng bộ (iCloud, OneDrive, Dropbox…).", [os.path.join(lib, "Caches", "*")], skip_root=_mac_keep_cache),
-            Category("mac_logs", "Nhật ký ứng dụng", "~/Library/Logs: file ghi hoạt động của ứng dụng.", [os.path.join(lib, "Logs")], min_age_hours=24),
-            Category("mac_crash", "Báo cáo lỗi", "Báo cáo khi ứng dụng bị treo hoặc thoát đột ngột.", [os.path.join(lib, "Logs", "DiagnosticReports"), os.path.join(lib, "Application Support", "CrashReporter")], min_age_hours=0),
-            Category("mac_xcode", "Dữ liệu tạm của Xcode", "DerivedData và bản lưu trữ thiết bị cũ của lập trình viên.", [os.path.join(lib, "Developer", "Xcode", "DerivedData"), os.path.join(lib, "Developer", "Xcode", "iOS DeviceSupport")], label="caution", min_age_hours=24),
-        ]
-    else:
-        cats += [
-            Category("linux_cache", "Bộ nhớ đệm", "~/.cache", [os.path.join(home, ".cache")]),
-            Category("linux_tmp", "File tạm", "/tmp (chỉ file của bạn)", ["/tmp"]),
-        ]
+    for source in SOURCES:
+        cats += source()
     for c in cats:
         roots: list[str] = []
         for pat in c.patterns:
