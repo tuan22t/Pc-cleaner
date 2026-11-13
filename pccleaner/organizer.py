@@ -11,6 +11,7 @@ import os
 import time
 
 from . import paths, quarantine, scanner
+from .i18n import _
 
 FOLDER_NAMES = {
     "Ảnh": "Ảnh",
@@ -38,9 +39,9 @@ def _unique(dest: str, taken: set[str]) -> str:
 def preview(folder: str, by_year: bool = True) -> dict:
     folder = os.path.abspath(os.path.expanduser(folder))
     if not os.path.isdir(folder):
-        raise FileNotFoundError(f"Thư mục không tồn tại: {folder}")
+        raise FileNotFoundError(_("Thư mục không tồn tại: {0}", folder))
     if paths.is_protected(folder):
-        raise PermissionError("Đây là thư mục hệ thống hoặc chương trình, ứng dụng không sắp xếp ở đây.")
+        raise PermissionError(_("Đây là thư mục hệ thống hoặc chương trình, ứng dụng không sắp xếp ở đây."))
     plan, taken = [], set()
     with os.scandir(folder) as it:
         entries = sorted((e for e in it), key=lambda e: e.name.lower())
@@ -52,7 +53,7 @@ def preview(folder: str, by_year: bool = True) -> dict:
             continue
         st = e.stat(follow_symlinks=False)
         cat = scanner.category_of(ext)
-        sub = FOLDER_NAMES.get(cat, "Khác")
+        sub = _(FOLDER_NAMES.get(cat, "Khác"))
         parts = [folder, sub]
         if by_year and cat in BY_YEAR:
             parts.append(time.strftime("%Y", time.localtime(st.st_mtime)))
@@ -81,6 +82,6 @@ def apply(folder: str, chosen: list[str], by_year: bool = True, cancel=None, pro
     wanted = {os.path.normcase(os.path.abspath(p)) for p in chosen}
     moves = [(m["src"], m["dest"]) for m in fresh["moves"] if os.path.normcase(m["src"]) in wanted]
     if not moves:
-        raise ValueError("Chưa chọn file nào để sắp xếp")
-    return quarantine.move_files(moves, f"Sắp xếp thư mục: {os.path.basename(fresh['folder']) or fresh['folder']}",
+        raise ValueError(_("Chưa chọn file nào để sắp xếp"))
+    return quarantine.move_files(moves, ": ".join(("Sắp xếp thư mục", os.path.basename(fresh["folder"]) or fresh["folder"])),
                                  cancel=cancel, progress=progress, on_progress=on_progress)

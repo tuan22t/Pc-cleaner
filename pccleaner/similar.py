@@ -9,10 +9,11 @@ from __future__ import annotations
 import os
 import threading
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 from . import db, paths
+from .i18n import _
 
 IMAGE_EXTS = {"jpg", "jpeg", "png", "bmp", "gif", "webp", "tif", "tiff", "heic", "heif"}
 DEFAULT_THRESHOLD = 6  # bits out of 64; must stay below 8 for the bucket search below
@@ -20,7 +21,7 @@ DEFAULT_THRESHOLD = 6  # bits out of 64; must stay below 8 for the bucket search
 
 @dataclass
 class SimProgress:
-    stage: str = "Đọc ảnh"
+    stage: str = field(default_factory=lambda: _("Đọc ảnh"))
     done: int = 0
     total: int = 0
     current: str = ""
@@ -43,12 +44,12 @@ def _open_image(path: str):
 
             pillow_heif.register_heif_opener()
         except ImportError:
-            raise OSError("Cần cài pillow-heif để đọc ảnh HEIC")
+            raise OSError(_("Cần cài pillow-heif để đọc ảnh HEIC"))
     im = Image.open(path)  # reads only the header; pixels are decoded later
     w, h = im.size
     if w * h > MAX_PIXELS:
         im.close()
-        raise OSError(f"Ảnh quá lớn ({w}×{h}), bỏ qua")
+        raise OSError(_("Ảnh quá lớn ({0}×{1}), bỏ qua", w, h))
     return im
 
 
@@ -122,7 +123,7 @@ def find_similar(
     # Pigeonhole: if two 64-bit hashes differ in at most 7 bits, at least one of
     # their eight bytes is identical. Comparing only within those byte buckets
     # avoids checking every pair.
-    progress.stage = "So sánh ảnh"
+    progress.stage = _("So sánh ảnh")
     if on_progress:
         on_progress(progress)
     buckets: dict[tuple[int, int], list[int]] = defaultdict(list)
@@ -206,7 +207,7 @@ def check_removal(scan_id: int, to_remove: list[str]) -> tuple[list[str], list[d
     for p in to_remove:
         r = conn.execute("SELECT group_id FROM similar_groups WHERE scan_id=? AND path=?", (scan_id, p)).fetchone()
         if r is None:
-            refused.append({"path": p, "error": "Không thuộc nhóm ảnh giống nhau nào"})
+            refused.append({"path": p, "error": _("Không thuộc nhóm ảnh giống nhau nào")})
         else:
             by_group[r["group_id"]].append(p)
     for gid, selected in by_group.items():
@@ -216,10 +217,10 @@ def check_removal(scan_id: int, to_remove: list[str]) -> tuple[list[str], list[d
         if not keepers:
             keep = next((p for p in selected if os.path.isfile(p)), None)
             if keep is None:
-                refused += [{"path": p, "error": "Không còn ảnh nào trong nhóm"} for p in selected]
+                refused += [{"path": p, "error": _("Không còn ảnh nào trong nhóm")} for p in selected]
                 continue
             selected = [p for p in selected if p != keep]
-            refused.append({"path": keep, "error": "Giữ lại ảnh cuối cùng của nhóm"})
+            refused.append({"path": keep, "error": _("Giữ lại ảnh cuối cùng của nhóm")})
         allowed += selected
     return allowed, refused
 

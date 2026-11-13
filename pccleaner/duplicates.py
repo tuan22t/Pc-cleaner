@@ -6,10 +6,11 @@ import re
 import os
 import threading
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 from . import db, paths
+from .i18n import _
 
 CHUNK = 1024 * 1024
 PARTIAL = 64 * 1024
@@ -17,7 +18,7 @@ PARTIAL = 64 * 1024
 
 @dataclass
 class DupProgress:
-    stage: str = "Nhóm theo kích thước"
+    stage: str = field(default_factory=lambda: _("Nhóm theo kích thước"))
     done: int = 0
     total: int = 0
     current: str = ""
@@ -106,7 +107,7 @@ def find_duplicates(
             on_progress(progress)
 
     # Stage 2: partial hash
-    progress.stage = "Băm nhanh (đầu + cuối file)"
+    progress.stage = _("Băm nhanh (đầu + cuối file)")
     progress.total = sum(len(v) for v in by_size.values())
     progress.done = 0
     by_partial: dict[tuple[int, str], list[tuple[str, float]]] = defaultdict(list)
@@ -130,11 +131,11 @@ def find_duplicates(
 
     # Stage 3: full hash only for files whose partial hash collides
     candidates = {k: v for k, v in by_partial.items() if len(v) > 1}
-    progress.stage = "Băm đầy đủ SHA-256"
+    progress.stage = _("Băm đầy đủ SHA-256")
     progress.total = sum(len(v) for v in candidates.values())
     progress.done = 0
     by_full: dict[tuple[int, str], list[tuple[str, float]]] = defaultdict(list)
-    for (size, _), items in candidates.items():
+    for (size, _h), items in candidates.items():
         for path, mtime in items:
             if cancel.is_set():
                 raise InterruptedError
@@ -238,7 +239,7 @@ def check_removal(scan_id: int, to_remove: list[str]) -> tuple[list[str], list[d
             "SELECT group_id, hash FROM dup_groups WHERE scan_id=? AND path=?", (scan_id, path)
         ).fetchone()
         if row is None:
-            refused.append({"path": path, "error": "Không thuộc nhóm file trùng nào"})
+            refused.append({"path": path, "error": _("Không thuộc nhóm file trùng nào")})
             continue
         by_group[row["group_id"]].append(path)
         hashes[row["group_id"]] = row["hash"]
@@ -259,13 +260,13 @@ def check_removal(scan_id: int, to_remove: list[str]) -> tuple[list[str], list[d
                     keeper = p
                     break
             if keeper is None:
-                refused += [{"path": p, "error": "Không còn bản nào giống hệt để giữ lại"} for p in candidates]
+                refused += [{"path": p, "error": _("Không còn bản nào giống hệt để giữ lại")} for p in candidates]
                 continue
             candidates.remove(keeper)
-            refused.append({"path": keeper, "error": "Giữ lại bản cuối cùng của nhóm"})
+            refused.append({"path": keeper, "error": _("Giữ lại bản cuối cùng của nhóm")})
         for p in candidates:
             if matches(p, expected):
                 allowed.append(p)
             else:
-                refused.append({"path": p, "error": "Nội dung file đã thay đổi từ lần quét trước"})
+                refused.append({"path": p, "error": _("Nội dung file đã thay đổi từ lần quét trước")})
     return allowed, refused

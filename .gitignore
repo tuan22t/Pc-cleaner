@@ -6,3 +6,4 @@ dist/
 .venv/
 tests/_tmp/
 .coverage
+screenshots/

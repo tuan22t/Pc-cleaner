@@ -85,6 +85,7 @@ async function render(view) {
     if (view === "startup") return await renderStartup();
     if (view === "organize") return renderOrganize();
     if (view === "schedule") return await renderSchedule();
+    if (view === "settings") return renderSettings();
     if (!state.scanId) return show("home");
     if (view === "usage") return await renderUsage();
     if (view === "large") return await renderLarge();
@@ -95,9 +96,13 @@ async function render(view) {
   } catch (e) { toast(e.message, { err: true }); }
 }
 
-// ---------- home ----------
+// ---------- home: Dashboard ----------
+const GROUPS = { junk: ["--v1", "Rác hệ thống", "junk"], dups: ["--v2", "Bản thừa của file trùng", "dups"], quarantine: ["--v3", "Khu cách ly (xóa hẳn để lấy lại chỗ)", "quarantine"] };
+const cssVar = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 async function renderHome() {
   const info = state.info = await api("info");
+  const dash = state.dash = await api("dashboard");
+  renderDashboard(dash);
   $("#pickFolderBtn").classList.toggle("hidden", !info.can_pick_folder);
   $("#locations").innerHTML = info.locations.map((l, i) => {
     const pct = l.total ? (l.used / l.total) * 100 : 0;
@@ -119,6 +124,117 @@ async function renderHome() {
     <div class="size">${fmt(s.total_size)}</div><button class="btn small" data-open="${s.id}">${t("Xem báo cáo")}</button></div>`).join("")}</div>`
     : `<div class="list"><div class="empty">${t("Chưa quét lần nào. Hãy bấm “Quét” ở một ô phía trên.")}</div></div>`;
   $$("[data-open]").forEach((b) => b.onclick = () => { selectScan(+b.dataset.open); show("usage"); });
+}
+
+function renderDashboard(d) {
+  const clean = d.cleanable.filter((c) => c.group !== "quarantine");
+  const cleanBytes = clean.reduce((a, c) => a + (c.bytes || 0), 0);
+  const q = d.cleanable.find((c) => c.group === "quarantine") || { bytes: 0 };
+  const st = d.startup, last = d.last_cleanup;
+  const tile = (lbl, big, sub, link, view) => `<div class="tile-stat"><span class="lbl">${lbl}</span><span class="big">${big}</span><span class="sub">${sub}</span>${link ? `<a data-goto="${view}">${link} →</a>` : ""}</div>`;
+  $("#dashTiles").innerHTML =
+    tile(t("Có thể dọn"), clean.length ? fmt(cleanBytes) : "—", clean.length ? t("rác hệ thống và file trùng đã tìm thấy") : t("Chưa kiểm tra"), t("Kiểm tra rác hệ thống"), "junk") +
+    tile(t("Khởi động cùng máy"), st ? num(st.enabled) : "—", st ? t("{0} chương trình đang bật, {1} có thể tắt", num(st.enabled), num(st.can_disable)) : t("Chưa kiểm tra"), t("Xem danh sách"), "startup") +
+    tile(t("Lần dọn gần nhất"), last ? fmt(last.bytes) : "—", last ? `${fmtDate(last.ts)} · ${esc(tReason(last.reason || ""))}` : t("Chưa dọn lần nào"), t("Khu cách ly & hoàn tác"), "quarantine") +
+    tile(t("Khu cách ly đang giữ"), fmt(q.bytes), t("lấy lại được bất cứ lúc nào"), "", "");
+  $$("[data-goto]").forEach((a) => a.onclick = () => show(a.dataset.goto));
+  // Cleanable space by group: bars on one scale, value always printed beside each bar.
+  const rows = d.cleanable;
+  const max = Math.max(1, ...rows.map((r) => r.bytes || 0));
+  const notes = { junk: (r) => t("theo lần kiểm tra lúc {0}", fmtDate(r.ts)), dups: (r) => t("theo lần tìm trong {0}", esc(r.root)), quarantine: () => t("đã dọn, chưa xóa hẳn") };
+  const missing = ["junk", "dups"].filter((g) => !rows.some((r) => r.group === g));
+  $("#dashClean").innerHTML = `<div class="hbar">${rows.map((r) => `
+      <span>${t(GROUPS[r.group][1])}</span>
+      <div class="track" title="${t(GROUPS[r.group][1])}: ${fmt(r.bytes)}"><div style="width:${(100 * (r.bytes || 0) / max).toFixed(1)}%;background:var(${GROUPS[r.group][0]})"></div></div>
+      <span class="v">${fmt(r.bytes || 0)}</span><span class="note">${notes[r.group](r)}</span>`).join("")}</div>` +
+    (missing.length ? `<p class="muted small-note">${missing.map((g) => g === "junk" ? t("Rác hệ thống: chưa kiểm tra.") : t("File trùng: chưa tìm.")).join(" ")}</p>` : "");
+  renderHistory(d);
+}
+
+// Used space per drive over time: one line per drive, one shared byte axis, hover crosshair.
+function renderHistory(d) {
+  const box = $("#dashHistory");
+  const labels = Object.fromEntries(d.locations.map((l) => [l.path, l.label]));
+  const series = Object.entries(d.history).filter(([p]) => labels[p]).slice(0, 4);
+  const days = [...new Set(series.flatMap(([, pts]) => pts.map((x) => x.day)))].sort();
+  if (days.length < 2) { box.innerHTML = `<div class="chart-empty">${t("Ứng dụng ghi lại dung lượng mỗi ngày anh/chị mở nó. Biểu đồ sẽ hiện từ ngày thứ hai.")}</div>`; return; }
+  const W = Math.max(280, box.clientWidth), H = 200, L = 52, R = 10, T = 10, B = 24;
+  const maxV = Math.max(...series.flatMap(([, pts]) => pts.map((x) => x.used))) * 1.08;
+  const x = (day) => L + (W - L - R) * days.indexOf(day) / (days.length - 1);
+  const y = (v) => T + (H - T - B) * (1 - v / maxV);
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => maxV * f);
+  const colors = ["--v1", "--v2", "--v3", "--v4"];
+  const dayLabel = (day) => new Date(day + "T12:00:00").toLocaleDateString(I18N.locale, { day: "numeric", month: "short" });
+  box.innerHTML = `<div class="line-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${t("Dung lượng đã dùng theo thời gian")}">
+    ${ticks.map((v) => `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="axis" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${fmt(v)}</text>`).join("")}
+    <text class="axis" x="${L}" y="${H - 6}">${dayLabel(days[0])}</text><text class="axis" x="${W - R}" y="${H - 6}" text-anchor="end">${dayLabel(days[days.length - 1])}</text>
+    ${series.map(([, pts], i) => `<polyline class="ln" style="stroke:var(${colors[i]})" points="${pts.map((p) => `${x(p.day).toFixed(1)},${y(p.used).toFixed(1)}`).join(" ")}"/>`).join("")}
+    <line class="cross hidden" x1="0" x2="0" y1="${T}" y2="${H - B}"/>
+    <rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>
+  </svg><div class="tip hidden"></div></div>
+  <div class="legend">${series.map(([p], i) => `<span><i style="background:var(${colors[i]})"></i>${esc(labels[p])}</span>`).join("")}</div>`;
+  const svg = box.querySelector("svg"), cross = box.querySelector(".cross"), tip = box.querySelector(".tip");
+  svg.addEventListener("mousemove", (e) => {
+    const r = svg.getBoundingClientRect(); const px = (e.clientX - r.left) * W / r.width;
+    const i = Math.max(0, Math.min(days.length - 1, Math.round((px - L) / (W - L - R) * (days.length - 1))));
+    const day = days[i]; cross.setAttribute("x1", x(day)); cross.setAttribute("x2", x(day)); cross.classList.remove("hidden");
+    tip.innerHTML = `<b>${dayLabel(day)}</b>` + series.map(([p, pts], k) => { const v = pts.find((q) => q.day === day); return v ? `<div><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(${colors[k]})"></i> ${esc(labels[p])}: ${t("đã dùng {0} / {1}", fmt(v.used), fmt(v.total))}</div>` : ""; }).join("");
+    tip.classList.remove("hidden");
+    const left = (x(day) / W) * r.width; tip.style.left = Math.min(left + 12, r.width - tip.offsetWidth) + "px"; tip.style.top = "8px";
+  });
+  svg.addEventListener("mouseleave", () => { cross.classList.add("hidden"); tip.classList.add("hidden"); });
+}
+
+// Log reasons are stored in Vietnamese as "<what>: <detail>"; each part is translated.
+function tReason(r) { const i = r.indexOf(": "); return i > 0 ? t(r.slice(0, i)) + ": " + t(r.slice(i + 2)) : t(r); }
+
+// ---------- settings, theme, language, first-run guide ----------
+function applyTheme(theme) {
+  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  else delete document.documentElement.dataset.theme;
+}
+function applyAppName() {
+  const name = (state.info && state.info.app_name) || "PC Cleaner";
+  $("#brandName").textContent = name; $$(".appName").forEach((e) => e.textContent = name);
+  document.title = name;
+}
+async function setLanguage(lang) {
+  const s = await api("settings", { lang });
+  state.info.settings = s;
+  await loadLang(s.lang); applyAppName();
+  $("#toast").classList.add("hidden"); // a message still showing is in the old language
+  $("#setLang").value = s.lang;
+  render(state.view); refreshBadge();
+}
+function renderSettings() {
+  const s = state.info.settings;
+  $("#setLang").value = s.lang; $("#setTheme").value = s.theme;
+  $("#aboutInfo").innerHTML = t("Phiên bản {0} · Thư mục dữ liệu: {1}", esc(state.info.version), esc(state.info.data_dir));
+}
+$("#setLang").onchange = (e) => setLanguage(e.target.value).catch((er) => toast(er.message, { err: true }));
+$("#setTheme").onchange = async (e) => {
+  try { state.info.settings = await api("settings", { theme: e.target.value }); applyTheme(state.info.settings.theme); if (state.view === "home") renderHome(); }
+  catch (er) { toast(er.message, { err: true }); }
+};
+$("#setGuide").onclick = () => openGuide();
+function openGuide() {
+  const steps = $$(".guide-step"); let i = 0;
+  const draw = () => {
+    steps.forEach((s, k) => s.classList.toggle("on", k === i));
+    $("#guideDots").innerHTML = steps.map((_s, k) => `<span class="${k === i ? "on" : ""}"></span>`).join("");
+    $("#guideBack").classList.toggle("hidden", i === 0);
+    $("#guideNext").textContent = i === steps.length - 1 ? t("Bắt đầu sử dụng") : t("Tiếp");
+    $$("[data-guide-lang]").forEach((b) => b.classList.toggle("active", b.dataset.guideLang === I18N.lang));
+  };
+  const close = async () => {
+    $("#guide").classList.add("hidden");
+    try { state.info.settings = await api("settings", { onboarded: true }); } catch (e) { /* asked again next time */ }
+  };
+  $("#guideNext").onclick = () => { if (i === steps.length - 1) close(); else { i++; draw(); } };
+  $("#guideBack").onclick = () => { if (i > 0) { i--; draw(); } };
+  $("#guideSkip").onclick = close;
+  $$("[data-guide-lang]").forEach((b) => b.onclick = async () => { await setLanguage(b.dataset.guideLang).catch((e) => toast(e.message, { err: true })); draw(); });
+  $("#guide").classList.remove("hidden"); draw(); $("#guideNext").focus();
 }
 $("#customScanBtn").onclick = () => { const p = $("#customPath").value.trim(); if (p) startScan(p); else { toast(t("Hãy nhập đường dẫn thư mục trước.")); $("#customPath").focus(); } };
 $("#customPath").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#customScanBtn").click(); });
@@ -310,9 +426,10 @@ $("#oldDays").onchange = $("#oldMin").onchange = renderOld;
 
 async function renderTypes() {
   const d = await api(`scan/${state.scanId}/summary`);
-  const bars = (rows, label) => { const m = rows.length ? rows[0].size : 1; return rows.map((r, i) => `
+  // One measure, one hue: bar length carries the size, the label names the group.
+  const bars = (rows, label) => { const m = rows.length ? rows[0].size : 1; return rows.map((r) => `
     <div class="b"><div>${esc(label(r))} <span class="muted">· ${t("{0} {0|file|files}", num(r.count))}</span></div>
-    <div class="track"><div style="width:${(100 * r.size / m).toFixed(1)}%;background:${COLORS[i % COLORS.length]}"></div></div><div class="v">${fmt(r.size)}</div></div>`).join(""); };
+    <div class="track" title="${esc(label(r))}: ${fmt(r.size)}"><div style="width:${(100 * r.size / m).toFixed(1)}%;background:var(--v1)"></div></div><div class="v">${fmt(r.size)}</div></div>`).join(""); };
   $("#catList").innerHTML = bars(d.categories, (r) => t(r.category));
   $("#extList").innerHTML = bars(d.extensions, (r) => (r.ext.startsWith("(") ? t(r.ext) : "." + r.ext));
 }
@@ -403,7 +520,7 @@ async function renderQuarantine() {
   const pendingBytes = visible.filter((b) => b.pending && !b.moves).reduce((a, b) => a + (b.bytes || 0), 0);
   $("#qSummary").innerHTML = pendingFiles ? t("Đang cất giữ <b>{0} {0|file|files}</b> (khoảng {1}).", num(pendingFiles), fmt(pendingBytes)) : "";
   $("#batchList").innerHTML = visible.length ? `<div class="row head"><div class="name">${t("Lần dọn")}</div><span class="kind">${t("Trạng thái")}</span><div class="size">${t("Dung lượng")}</div><span class="acts2"></span></div>` + visible.map((b) => `
-    <div class="row"><div class="name"><div class="t">${esc(b.reason ? t(b.reason) : t("Dọn dẹp"))} · ${t("{0} {0|file|files}", num(b.files))}</div><div class="p">${fmtDate(b.ts)}</div></div>
+    <div class="row"><div class="name"><div class="t">${esc(b.reason ? tReason(b.reason) : t("Dọn dẹp"))} · ${t("{0} {0|file|files}", num(b.files))}</div><div class="p">${fmtDate(b.ts)}</div></div>
     <span class="kind"><span class="tag ${b.pending ? "" : "ok"}">${b.moves ? (b.pending ? t("Đã sắp xếp") : t("Đã hoàn tác")) : b.pending ? t("Đang cất giữ") : b.purged ? t("Đã xóa vĩnh viễn") : t("Đã lấy lại")}</span></span>
     <div class="size">${fmt(b.bytes)}</div>
     <span class="acts2">${b.pending && b.moves ? `<button class="btn small primary" data-restore="${b.batch_id}">↩ ${t("Hoàn tác")}</button>` : b.pending ? `<button class="btn small primary" data-restore="${b.batch_id}">↩ ${t("Lấy lại")}</button>
@@ -618,5 +735,14 @@ $("#schRunNow").onclick = async () => {
   try { const r = await runAction("schedule-run", {}); toast(t("Đã dọn {0} file rác ({1}).", num(r.junk_moved), fmt(r.junk_bytes))); refreshBadge(); renderSchedule(); } catch (e) { toast(e.message, { err: true }); }
 };
 
-window.addEventListener("resize", () => { if (state.view === "usage") renderUsage(); });
-(async () => { await loadScans().catch((e) => toast(e.message, { err: true })); refreshBadge(); render("home"); pollJob(); })();
+window.addEventListener("resize", () => { if (state.view === "usage") renderUsage(); if (state.view === "home" && state.dash) renderHistory(state.dash); });
+(async () => {
+  try {
+    state.info = await api("info");
+    applyTheme(state.info.settings.theme);
+    await loadLang(state.info.settings.lang);
+  } catch (e) { await loadLang("vi"); toast(e.message, { err: true }); }
+  applyAppName();
+  await loadScans().catch((e) => toast(e.message, { err: true })); refreshBadge(); render("home"); pollJob();
+  if (state.info && !state.info.settings.onboarded) openGuide();
+})();

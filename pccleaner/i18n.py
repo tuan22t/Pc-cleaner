@@ -30,8 +30,13 @@ def _dict(lang: str) -> dict[str, str]:
 
 
 def default_lang() -> str:
-    """Vietnamese on a Vietnamese system, English otherwise."""
+    """Vietnamese on a Vietnamese system, English otherwise (PCCLEANER_LANG overrides)."""
     import locale
+    import os
+
+    env = os.environ.get("PCCLEANER_LANG", "")
+    if env in LANGS:
+        return env
 
     try:
         loc = (locale.getlocale()[0] or "") + " " + (locale.getdefaultlocale()[0] or "")  # noqa: DEP
@@ -49,17 +54,24 @@ def default_lang() -> str:
     return "vi" if re.search(r"\bvi|Vietnam", loc, re.I) else "en"
 
 
+_busy = threading.local()
+
+
 def lang() -> str:
     global _current
     if _current is None:
         from . import db
 
+        if getattr(_busy, "on", False):  # a message raised while opening the database
+            return "vi"
+        _busy.on = True
         try:
-            _current = db.get_setting("lang") or default_lang()
-        except Exception:  # noqa: BLE001
-            _current = "vi"
-        if _current not in LANGS:
-            _current = "vi"
+            value = db.get_setting("lang") or default_lang()
+        except Exception:  # noqa: BLE001 - database not ready: answer, but ask again next time
+            return "vi"
+        finally:
+            _busy.on = False
+        _current = value if value in LANGS else "vi"
     return _current
 
 
@@ -68,7 +80,7 @@ def set_lang(value: str) -> str:
     from . import db
 
     if value not in LANGS:
-        raise ValueError("Ngôn ngữ không hỗ trợ")
+        raise ValueError(_("Ngôn ngữ không hỗ trợ"))
     db.set_setting("lang", value)
     _current = value
     return value

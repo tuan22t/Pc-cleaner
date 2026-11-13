@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from . import db, paths, platforms
 from .platforms.common import _ps, _ps_admin, _run, is_admin  # noqa: F401 - re-exported
+from .i18n import _
 from .startup_base import (  # noqa: F401 - re-exported
     KEEP_WORDS, PROVIDERS, SAFE_WORDS, Provider, _change, _close_change, _discard_change, _log_change, classify,
     history, register_provider,
@@ -37,7 +38,7 @@ else:
 def create_restore_point() -> dict:
     """Windows only: create a System Restore point (asks for administrator rights)."""
     if not paths.IS_WINDOWS:
-        return {"ok": False, "error": "Chỉ có trên Windows. Trên macOS hãy dùng Time Machine."}
+        return {"ok": False, "error": _("Chỉ có trên Windows. Trên macOS hãy dùng Time Machine.")}
     return _os.create_restore_point()
 
 

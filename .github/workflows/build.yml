@@ -21,9 +21,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install "Pillow>=10.0" "coverage>=7.4"
+      - run: pip install "Pillow>=10.0" "coverage>=7.4" "playwright>=1.45"
+      - name: Browser for the interface tests
+        run: python -m playwright install chromium
       - name: Tests (with coverage)
+        env:
+          PCCLEANER_SCREENSHOTS: screenshots
         run: python -m coverage run --source=pccleaner -m unittest discover -s tests -v
+      - name: Screenshots of every screen, Vietnamese and English
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ matrix.os }}
+          path: screenshots/
       - name: Coverage of the shared core must stay at 80% or more
         shell: bash
         run: |

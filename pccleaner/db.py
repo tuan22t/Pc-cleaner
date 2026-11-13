@@ -5,7 +5,8 @@ import sqlite3
 import threading
 from pathlib import Path
 
-from . import paths
+from . import APP_NAME, paths
+from .i18n import _
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -132,6 +133,9 @@ MIGRATIONS: list[str] = [
     "ALTER TABLE dirs ADD COLUMN fdir INTEGER;"
     "UPDATE dirs SET fscan=scan_id, fdir=id;"
     "CREATE INDEX IF NOT EXISTS dirs_src ON dirs(fscan, fdir, scan_id);",
+    # 6: used space of each drive, one reading a day, for the Dashboard history chart.
+    "CREATE TABLE IF NOT EXISTS disk_history (path TEXT NOT NULL, day TEXT NOT NULL, ts REAL NOT NULL,"
+    " total INTEGER NOT NULL, used INTEGER NOT NULL, PRIMARY KEY (path, day));",
 ]
 # Queries on size can use the files_big index only when they repeat this
 # condition literally (SQLite does not match it against a bound parameter).
@@ -149,7 +153,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if current > SCHEMA_VERSION:
         # Written by a newer version of the app: refuse rather than risk damaging it.
         raise NewerDatabaseError(
-            "Dữ liệu được tạo bởi phiên bản PC Cleaner mới hơn. Hãy cài lại phiên bản mới nhất."
+            _("Dữ liệu được tạo bởi phiên bản {0} mới hơn. Hãy cài lại phiên bản mới nhất.", APP_NAME)
         )
     for version in range(current + 1, SCHEMA_VERSION + 1):
         conn.executescript("BEGIN;" + MIGRATIONS[version - 1] + f";PRAGMA user_version={version};COMMIT;")
@@ -177,6 +181,9 @@ def reset_for_tests(path: Path) -> None:
     global _db_path
     _db_path = path
     _local.conn = None
+    from . import i18n
+
+    i18n.reset()
 
 
 def get_setting(key: str, default=None):

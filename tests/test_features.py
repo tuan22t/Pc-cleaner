@@ -11,6 +11,7 @@ _BASE = Path(__file__).resolve().parent / "_tmp"
 _BASE.mkdir(exist_ok=True)
 TMP = tempfile.mkdtemp(dir=_BASE)
 os.environ.setdefault("PCCLEANER_DATA_DIR", os.path.join(TMP, "data"))
+os.environ.setdefault("PCCLEANER_LANG", "vi")  # messages are checked in Vietnamese
 
 from pccleaner import db, junk, organizer, paths, quarantine, scanner, scheduler, similar, startup  # noqa: E402
 

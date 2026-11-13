@@ -21,6 +21,7 @@ import uuid
 from pathlib import Path
 
 from . import db, paths
+from .i18n import _
 
 
 class ProtectedPathError(PermissionError):
@@ -106,14 +107,14 @@ def _run_chunks(conn, jobs: list[dict], pending_kind: str, done_kind: str,
         for j in chunk:
             if cancel is not None and cancel.is_set():
                 conn.execute("UPDATE actions SET kind='aborted', reason=? WHERE id=?",
-                             (f"{j['reason']}: đã dừng theo yêu cầu, file vẫn ở chỗ cũ", j["row"]))
+                             (_("{0}: đã dừng theo yêu cầu, file vẫn ở chỗ cũ", j["reason"]), j["row"]))
                 continue
             _tick(progress, on_progress, j["src"])
             try:
                 _hit("before_move")
                 os.makedirs(paths.lp(os.path.dirname(j["dst"])), exist_ok=True)
                 if os.path.exists(paths.lp(j["dst"])):
-                    raise FileExistsError("Đã có file cùng tên ở nơi đến")
+                    raise FileExistsError(_("Đã có file cùng tên ở nơi đến"))
                 _rename(j["src"], j["dst"])
                 _hit("after_move")
                 j["ok"] = True
@@ -135,19 +136,20 @@ def _free_name(path: str) -> str:
     """``a.txt`` -> ``a (khôi phục).txt``, ``a (khôi phục 2).txt``… the first name not in use."""
     stem, ext = os.path.splitext(path)
     for n in range(1, 1000):
-        cand = f"{stem} (khôi phục{'' if n == 1 else ' ' + str(n)}){ext}"
+        word = _("khôi phục")
+        cand = f"{stem} ({word}{'' if n == 1 else ' ' + str(n)}){ext}"
         if not os.path.exists(paths.lp(cand)):
             return cand
-    raise FileExistsError("Đã có file khác ở vị trí cũ")
+    raise FileExistsError(_("Đã có file khác ở vị trí cũ"))
 
 
 def _friendly(e: Exception) -> str:
     import errno
 
     if isinstance(e, OSError) and e.errno == errno.EXDEV:
-        return "Không di chuyển được giữa hai ổ đĩa khác nhau"
+        return _("Không di chuyển được giữa hai ổ đĩa khác nhau")
     if isinstance(e, PermissionError) and not isinstance(e, ProtectedPathError):
-        return "Không có quyền hoặc file đang được chương trình khác sử dụng"
+        return _("Không có quyền hoặc file đang được chương trình khác sử dụng")
     return str(e)
 
 
@@ -187,7 +189,7 @@ def quarantine(
         try:
             if allow_roots is not None:
                 if not _inside(src, allow_roots):
-                    raise ProtectedPathError("Nằm ngoài thư mục rác được phép dọn")
+                    raise ProtectedPathError(_("Nằm ngoài thư mục rác được phép dọn"))
             else:
                 why = paths.protection_reason(src)
                 if why:
@@ -195,9 +197,9 @@ def quarantine(
                 if not allow_cloud:
                     cloud = paths.cloud_name(src)
                     if cloud:
-                        raise ProtectedPathError(f"Nằm trong thư mục {cloud}: cần anh/chị xác nhận riêng")
+                        raise ProtectedPathError(_("Nằm trong thư mục {0}: cần anh/chị xác nhận riêng", cloud))
             if not os.path.isfile(paths.lp(src)) or os.path.islink(paths.lp(src)):
-                raise FileNotFoundError("Không phải file thường hoặc không còn tồn tại")
+                raise FileNotFoundError(_("Không phải file thường hoặc không còn tồn tại"))
             dst = str(paths.quarantine_dir_for(src) / batch_id / str(i) / os.path.basename(src))
             jobs.append({"src": src, "dst": dst, "size": os.path.getsize(paths.lp(src)), "reason": reason, "batch": batch_id})
         except Exception as e:  # noqa: BLE001
@@ -238,9 +240,9 @@ def move_files(moves: list[tuple[str, str]], reason: str = "", cancel=None,
             if why:
                 raise ProtectedPathError(why)
             if not os.path.isfile(paths.lp(src)) or os.path.islink(paths.lp(src)):
-                raise FileNotFoundError("Không phải file thường hoặc không còn tồn tại")
+                raise FileNotFoundError(_("Không phải file thường hoặc không còn tồn tại"))
             if os.path.exists(paths.lp(dst)):
-                raise FileExistsError("Đã có file cùng tên ở nơi đến")
+                raise FileExistsError(_("Đã có file cùng tên ở nơi đến"))
             missing, d = [], os.path.dirname(dst)
             while not os.path.exists(paths.lp(d)) and os.path.normcase(d) not in planned_dirs:
                 missing.append(d)
@@ -294,13 +296,13 @@ def restore(batch_id: str, cancel=None, progress: Progress | None = None, on_pro
                 # A new file now has this name: never overwrite it, put ours beside it.
                 target = _free_name(target)
             if not r["stored_at"] or not os.path.exists(paths.lp(r["stored_at"])):
-                raise FileNotFoundError("Không còn bản lưu trong khu cách ly (ổ đĩa đã bị rút ra hoặc bị xóa?)")
+                raise FileNotFoundError(_("Không còn bản lưu trong khu cách ly (ổ đĩa đã bị rút ra hoặc bị xóa?)"))
             os.makedirs(paths.lp(os.path.dirname(target)), exist_ok=True)
             _rename(r["stored_at"], target)
             _hit("restore_after_move")
             conn.execute("UPDATE actions SET restored=1 WHERE id=?", (r["id"],))
             _log(conn, batch_id, "restore", target, r["stored_at"], r["size"],
-                 None if target == r["path"] else f"Đã có file mới cùng tên, bản cũ được đặt tên {os.path.basename(target)}")
+                 None if target == r["path"] else _("Đã có file mới cùng tên, bản cũ được đặt tên {0}", os.path.basename(target)))
             if target != r["path"]:
                 renamed.append({"path": r["path"], "restored_as": target})
             ok += 1
@@ -357,7 +359,7 @@ def purge_batch(batch_id: str, cancel=None, progress: Progress | None = None, on
         try:
             if r["stored_at"] and os.path.exists(paths.lp(r["stored_at"])):
                 if not _is_quarantine_copy(r["stored_at"]):
-                    raise ProtectedPathError("Bản lưu không nằm trong khu cách ly")
+                    raise ProtectedPathError(_("Bản lưu không nằm trong khu cách ly"))
                 os.remove(paths.lp(r["stored_at"]))
                 _hit("purge_after_remove")
                 freed += r["size"]
@@ -416,13 +418,13 @@ def recover() -> dict:
         elif src_ok:
             conn.execute(
                 "UPDATE actions SET kind='aborted', reason=? WHERE id=?",
-                ((r["reason"] or "") + " (bị dừng giữa chừng, file vẫn ở chỗ cũ)", r["id"]),
+                (_("{0} (bị dừng giữa chừng, file vẫn ở chỗ cũ)", r["reason"] or ""), r["id"]),
             )
             aborted += 1
         else:
             conn.execute(
                 "UPDATE actions SET kind='error', reason=? WHERE id=?",
-                ((r["reason"] or "") + ": không thấy file ở chỗ cũ lẫn trong khu cách ly", r["id"]),
+                (_("{0}: không thấy file ở chỗ cũ lẫn trong khu cách ly", r["reason"] or ""), r["id"]),
             )
             missing += 1
     conn.commit()

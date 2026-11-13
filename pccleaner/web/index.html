@@ -11,7 +11,7 @@
   <aside class="sidebar">
     <div class="brand">
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="#6ea1ff" d="M12 2a10 10 0 1 0 10 10h-10z"/><path fill="#3fd0a8" d="M14 0.5V10h9.5A9.5 9.5 0 0 0 14 0.5z"/></svg>
-      PC Cleaner
+      <span id="brandName">PC Cleaner</span>
     </div>
     <nav>
       <a href="#" data-view="home" class="active"><span class="ni">🏠</span><span data-i18n>Tổng quan</span></a>
@@ -30,6 +30,7 @@
       <a href="#" data-view="schedule"><span class="ni">⏰</span><span data-i18n>Dọn dẹp theo lịch</span></a>
       <div data-i18n class="nav-sep">An toàn</div>
       <a href="#" data-view="quarantine"><span class="ni">🛟</span><span data-i18n>Khu cách ly &amp; hoàn tác</span> <span id="qBadge" class="badge hidden"></span></a>
+      <a href="#" data-view="settings" class="nav-bottom"><span class="ni">⚙️</span><span data-i18n>Cài đặt</span></a>
     </nav>
     <div class="scan-pick">
       <label data-i18n for="scanSelect">Đang xem kết quả quét</label>
@@ -49,11 +50,11 @@
     </div>
 
     <section id="view-home" class="view active">
-      <h1 data-i18n>Dọn dẹp máy tính</h1>
-      <div class="steps">
-        <div class="step"><b>1</b><div><strong><span data-i18n>Quét</span></strong><span data-i18n>Chọn ổ đĩa hoặc thư mục. Quét chỉ đọc, không thay đổi gì trên máy.</span></div></div>
-        <div class="step"><b>2</b><div><strong><span data-i18n>Xem báo cáo</span></strong><span data-i18n>Biết thư mục nào, file nào đang chiếm nhiều chỗ, file nào bị trùng.</span></div></div>
-        <div class="step"><b>3</b><div><strong><span data-i18n>Dọn an toàn</span></strong><span data-i18n>File được chuyển vào khu cách ly, lấy lại được bất cứ lúc nào.</span></div></div>
+      <h1 data-i18n>Tổng quan</h1>
+      <div id="dashTiles" class="tiles"></div>
+      <div class="two-col dash-charts">
+        <div class="card chart-card"><h2 data-i18n>Có thể dọn theo nhóm</h2><div id="dashClean"></div></div>
+        <div class="card chart-card"><h2 data-i18n>Dung lượng đã dùng theo thời gian</h2><div id="dashHistory"></div></div>
       </div>
       <h2 data-i18n>Chọn nơi cần quét</h2>
       <div id="locations" class="cards"></div>
@@ -221,6 +222,23 @@
       </details>
     </section>
 
+    <section id="view-settings" class="view">
+      <h1 data-i18n>Cài đặt</h1>
+      <div class="card form">
+        <div class="form-grid">
+          <label data-i18n for="setLang">Ngôn ngữ</label>
+          <select id="setLang"><option value="vi">Tiếng Việt</option><option value="en">English</option></select>
+          <label data-i18n for="setTheme">Giao diện</label>
+          <select id="setTheme"><option data-i18n value="system">Theo hệ thống</option><option data-i18n value="light">Sáng</option><option data-i18n value="dark">Tối</option></select>
+          <label data-i18n>Hướng dẫn</label>
+          <div><button data-i18n id="setGuide" class="btn ghost">Xem lại hướng dẫn sử dụng</button></div>
+        </div>
+      </div>
+      <h2 data-i18n>Dữ liệu và quyền riêng tư</h2>
+      <div data-i18n class="info">Kết quả quét, nhật ký và khu cách ly chỉ được lưu trên máy này. Ứng dụng không gửi dữ liệu nào ra ngoài.</div>
+      <div id="aboutInfo" class="summary muted"></div>
+    </section>
+
     <div id="actionBar" class="actionbar hidden">
       <label class="selall"><input type="checkbox" id="selAll"> <span data-i18n>Chọn tất cả</span></label>
       <span id="selInfo"></span>
@@ -234,6 +252,18 @@
 <div id="modal" class="modal hidden"><div class="modal-box">
   <h3 id="modalTitle"></h3><div id="modalBody"></div>
   <div class="modal-actions"><button data-i18n id="modalCancel" class="btn ghost">Hủy</button><button id="modalAlt" class="btn ghost hidden"></button><button data-i18n id="modalOk" class="btn warn">Đồng ý</button></div>
+</div></div>
+<div id="guide" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="guideTitle"><div class="modal-box guide-box">
+  <div class="guide-lang"><button class="chip" data-guide-lang="vi">Tiếng Việt</button><button class="chip" data-guide-lang="en">English</button></div>
+  <div id="guideSteps">
+    <div class="guide-step"><div class="guide-ico">👋</div><h3 id="guideTitle"><span data-i18n>Chào mừng đến với</span> <span class="appName">PC Cleaner</span></h3><p data-i18n>Ứng dụng giúp anh/chị tìm và dọn những thứ chiếm chỗ trên máy một cách an toàn. Bốn điều cần biết trước khi bắt đầu:</p></div>
+    <div class="guide-step"><div class="guide-ico">🔍</div><h3 data-i18n>Quét chỉ đọc</h3><p data-i18n>Quét ổ đĩa hay kiểm tra rác chỉ xem, không thay đổi hay xóa gì trên máy.</p></div>
+    <div class="guide-step"><div class="guide-ico">✋</div><h3 data-i18n>Không tự ý xóa</h3><p data-i18n>Ứng dụng chỉ gợi ý. Mọi lần dọn đều do anh/chị chọn và bấm xác nhận. File hệ thống và chương trình được khóa, không thể chọn.</p></div>
+    <div class="guide-step"><div class="guide-ico">🛟</div><h3 data-i18n>Lấy lại được</h3><p data-i18n>File đã dọn được cất vào Khu cách ly. Bấm Lấy lại để trả file về đúng chỗ cũ. Chỉ khi anh/chị bấm Xóa vĩnh viễn thì file mới mất hẳn.</p></div>
+    <div class="guide-step"><div class="guide-ico">🔒</div><h3 data-i18n>Dữ liệu ở lại trên máy</h3><p data-i18n>Kết quả quét và nhật ký chỉ lưu trên máy này, không gửi đi đâu.</p></div>
+  </div>
+  <div class="guide-dots" id="guideDots"></div>
+  <div class="modal-actions"><button data-i18n id="guideSkip" class="btn ghost">Bỏ qua</button><button data-i18n id="guideBack" class="btn ghost">Quay lại</button><button data-i18n id="guideNext" class="btn primary">Tiếp</button></div>
 </div></div>
 <script src="i18n.js"></script>
 <script src="app.js"></script>

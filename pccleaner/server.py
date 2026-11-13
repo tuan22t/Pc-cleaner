@@ -15,7 +15,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .platforms.common import background_thread
-from . import __version__, duplicates, junk, organizer, paths, quarantine, scanner, scheduler, similar, startup
+from . import APP_NAME, __version__, dashboard, db, duplicates, i18n, junk, organizer, paths, quarantine, scanner, scheduler, similar, startup
+from .i18n import _
 
 WEB_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).parent.parent)) / "pccleaner" / "web"
 if not WEB_DIR.is_dir():
@@ -59,7 +60,7 @@ class JobManager:
     def start(self, kind: str, fn, **meta) -> None:
         with self.lock:
             if self.busy():
-                raise RuntimeError("Đang có một tác vụ khác chạy")
+                raise RuntimeError(_("Đang có một tác vụ khác chạy"))
             self.cancel = threading.Event()
             self.state = {"state": "running", "kind": kind, "started": time.time(), **meta}
 
@@ -98,7 +99,7 @@ window = None
 
 def _pick_folder() -> str | None:
     if window is None:
-        raise RuntimeError("Chỉ chọn thư mục được khi chạy trong cửa sổ ứng dụng")
+        raise RuntimeError(_("Chỉ chọn thư mục được khi chạy trong cửa sổ ứng dụng"))
     import webview  # type: ignore
 
     kind = getattr(getattr(webview, "FileDialog", None), "FOLDER", None) or webview.FOLDER_DIALOG
@@ -179,7 +180,7 @@ def make_handler(token: str):
             try:
                 body = self._body()
             except ValueError:
-                return self._json({"error": "JSON không hợp lệ"}, 400)
+                return self._json({"error": _("JSON không hợp lệ")}, 400)
             self._api("POST", u.path, {}, body)
 
         def _static(self, path: str):
@@ -209,7 +210,7 @@ def make_handler(token: str):
             try:
                 result = route(method, path, q, body)
             except KeyError as e:
-                return self._json({"error": f"Không tìm thấy: {e}"}, 404)
+                return self._json({"error": _("Không tìm thấy: {0}", e)}, 404)
             except (RuntimeError, ValueError, FileNotFoundError, PermissionError) as e:
                 return self._json({"error": str(e)}, 400)
             except Exception as e:  # noqa: BLE001
@@ -218,6 +219,29 @@ def make_handler(token: str):
             self._json(result)
 
     return Handler
+
+
+THEMES = ("system", "light", "dark")
+
+
+def _settings() -> dict:
+    return {
+        "lang": i18n.lang(),
+        "theme": db.get_setting("theme") or "system",
+        "onboarded": db.get_setting("onboarded") == "1",
+    }
+
+
+def _save_settings(body: dict) -> dict:
+    if "lang" in body:
+        i18n.set_lang(str(body["lang"]))
+    if "theme" in body:
+        if body["theme"] not in THEMES:
+            raise ValueError(_("Giao diện không hợp lệ"))
+        db.set_setting("theme", body["theme"])
+    if "onboarded" in body:
+        db.set_setting("onboarded", "1" if body["onboarded"] else "0")
+    return _settings()
 
 
 def route(method: str, path: str, q: dict, body: dict):
@@ -232,7 +256,11 @@ def route(method: str, path: str, q: dict, body: dict):
             "locations": paths.list_locations(),
             "data_dir": str(paths.data_dir()),
             "can_pick_folder": window is not None,
+            "app_name": APP_NAME,
+            "settings": _settings(),
         }
+    if key == ("POST", "settings"):
+        return _save_settings(body)
     if key == ("POST", "pick-folder"):
         return {"path": _pick_folder()}
     if key == ("GET", "job"):
@@ -243,7 +271,7 @@ def route(method: str, path: str, q: dict, body: dict):
     if key == ("POST", "scan"):
         root = os.path.expanduser(body.get("path") or "")
         if not os.path.isdir(root):
-            raise FileNotFoundError(f"Thư mục không tồn tại: {root}")
+            raise FileNotFoundError(_("Thư mục không tồn tại: {0}", root))
         progress = scanner.ScanProgress()
         full = bool(body.get("full"))
         jobs.start("scan", lambda c, u: scanner.scan(root, progress, c, u, incremental=not full), root=root)
@@ -285,10 +313,15 @@ def route(method: str, path: str, q: dict, body: dict):
     if key == ("POST", "junk-clean"):
         ids = [str(i) for i in body.get("ids") or []]
         if not ids:
-            raise ValueError("Chưa chọn mục nào")
-        return jobs.action("Đang dọn rác hệ thống", lambda c, p, u: junk.clean(ids, c, p, u))
+            raise ValueError(_("Chưa chọn mục nào"))
+        return jobs.action(_("Đang dọn rác hệ thống"), lambda c, p, u: junk.clean(ids, c, p, u))
+    if key == ("GET", "dashboard"):
+        return dashboard.summary()
     if key == ("GET", "startup"):
-        return {"items": startup.list_items(), "admin": startup.is_admin(),
+        items = startup.list_items()
+        dashboard.remember("last_startup", {"total": len(items), "enabled": sum(1 for i in items if i["enabled"]),
+                                            "can_disable": sum(1 for i in items if i["enabled"] and i["label"] == "safe")})
+        return {"items": items, "admin": startup.is_admin(),
                 "last_restore_point": scheduler.db.get_setting("last_restore_point")}
     if key == ("POST", "startup-set"):
         return startup.set_enabled(str(body["id"]), bool(body["enable"]))
@@ -302,7 +335,7 @@ def route(method: str, path: str, q: dict, body: dict):
         folder, chosen = str(body.get("folder") or ""), [str(p) for p in body.get("chosen") or []]
         by_year = bool(body.get("by_year", True))
         organizer.preview(folder, by_year)  # refuse a bad folder right away, before the job starts
-        return jobs.action("Đang sắp xếp thư mục", lambda c, p, u: organizer.apply(folder, chosen, by_year, c, p, u))
+        return jobs.action(_("Đang sắp xếp thư mục"), lambda c, p, u: organizer.apply(folder, chosen, by_year, c, p, u))
     if key == ("GET", "schedule"):
         cfg = scheduler.get()
         cfg["registered"] = scheduler.is_registered()
@@ -311,11 +344,11 @@ def route(method: str, path: str, q: dict, body: dict):
     if key == ("POST", "schedule"):
         return scheduler.save(body)
     if key == ("POST", "schedule-run"):
-        return jobs.action("Đang chạy dọn dẹp tự động", lambda c, p, u: scheduler.run_auto_clean(c, p, u))
+        return jobs.action(_("Đang chạy dọn dẹp tự động"), lambda c, p, u: scheduler.run_auto_clean(c, p, u))
     if key == ("POST", "quarantine"):
         files = body.get("paths") or []
         if not isinstance(files, list) or not files:
-            raise ValueError("Chưa chọn file nào")
+            raise ValueError(_("Chưa chọn file nào"))
         files = [str(p) for p in files]
         reason, allow_cloud = str(body.get("reason", "")), bool(body.get("allow_cloud"))
         dup_sid, sim_sid = body.get("dup_scan_id"), body.get("similar_scan_id")
@@ -324,16 +357,16 @@ def route(method: str, path: str, q: dict, body: dict):
             chosen, refused = files, []
             if dup_sid is not None:
                 # Duplicates are re-verified on disk right before anything moves.
-                p.stage = "Đang kiểm tra lại nội dung file trùng"
+                p.stage = _("Đang kiểm tra lại nội dung file trùng")
                 u(p)
                 chosen, refused = duplicates.check_removal(int(dup_sid), files)
             elif sim_sid is not None:
                 chosen, refused = similar.check_removal(int(sim_sid), files)
-            p.stage = "Đang dọn"
+            p.stage = _("Đang dọn")
             return quarantine.quarantine(chosen, reason, refused, allow_cloud=allow_cloud,
                                          cancel=c, progress=p, on_progress=u)
 
-        return jobs.action("Đang dọn", clean)
+        return jobs.action(_("Đang dọn"), clean)
     if key == ("GET", "batches"):
         return quarantine.batches()
     if key == ("GET", "log"):
@@ -351,10 +384,10 @@ def route(method: str, path: str, q: dict, body: dict):
                 out["cancelled"] = out["cancelled"] or r["cancelled"]
             return out
 
-        return jobs.action("Đang trả file về chỗ cũ", undo_all)
+        return jobs.action(_("Đang trả file về chỗ cũ"), undo_all)
     if key == ("POST", "purge"):
         bid = str(body["batch_id"])
-        return jobs.action("Đang xóa vĩnh viễn", lambda c, p, u: quarantine.purge_batch(bid, c, p, u))
+        return jobs.action(_("Đang xóa vĩnh viễn"), lambda c, p, u: quarantine.purge_batch(bid, c, p, u))
     if key == ("POST", "reveal"):
         _reveal(str(body["path"]))
         return {"ok": True}
