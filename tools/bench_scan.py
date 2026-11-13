@@ -55,15 +55,18 @@ try:
     for rnd in range(ROUNDS):
         drop_caches()
         t = time.perf_counter()
-        first = scanner.scan(str(root), incremental=False)
+        first = scanner.scan(str(root), incremental=False, prune=False)
         t_full = time.perf_counter() - t
+        scanner.prune_scans(str(root))
         # One folder changes between the scans, as in real use.
         (root / "g0" / "d0" / f"new{rnd}.dat").write_bytes(b"new")
         p = scanner.ScanProgress()
         drop_caches()
         t = time.perf_counter()
-        second = scanner.scan(str(root), progress=p)
+        second = scanner.scan(str(root), progress=p, prune=False)
         t_inc = time.perf_counter() - t
+        # As in the app: old scans are pruned after the result is shown, not while the user waits.
+        scanner.prune_scans(str(root))
 
         conn = db.connect()
         a = conn.execute("SELECT file_count FROM scans WHERE id=?", (first,)).fetchone()[0]

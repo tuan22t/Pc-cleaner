@@ -57,7 +57,9 @@ class JobManager:
     def busy(self) -> bool:
         return self.thread is not None and self.thread.is_alive()
 
-    def start(self, kind: str, fn, **meta) -> None:
+    def start(self, kind: str, fn, after=None, **meta) -> None:
+        """Run ``fn`` in the background. ``after`` (housekeeping) runs once the
+        result is already shown, in the same thread, so no other job starts meanwhile."""
         with self.lock:
             if self.busy():
                 raise RuntimeError(_("Đang có một tác vụ khác chạy"))
@@ -69,6 +71,11 @@ class JobManager:
                 try:
                     result = fn(self.cancel, self._update)
                     self.state.update(state="done", result=result, finished=time.time())
+                    if after is not None:
+                        try:
+                            after()
+                        except Exception:  # noqa: BLE001  - housekeeping never fails the job
+                            _log_exc()
                 except (scanner.Cancelled, InterruptedError):
                     self.state.update(state="cancelled", finished=time.time())
                 except Exception as e:  # noqa: BLE001
@@ -274,7 +281,8 @@ def route(method: str, path: str, q: dict, body: dict):
             raise FileNotFoundError(_("Thư mục không tồn tại: {0}", root))
         progress = scanner.ScanProgress()
         full = bool(body.get("full"))
-        jobs.start("scan", lambda c, u: scanner.scan(root, progress, c, u, incremental=not full), root=root)
+        jobs.start("scan", lambda c, u: scanner.scan(root, progress, c, u, incremental=not full, prune=False),
+                   after=lambda: scanner.prune_scans(root), root=root)
         return {"ok": True}
     if key == ("GET", "scans"):
         return scanner.latest_scans()

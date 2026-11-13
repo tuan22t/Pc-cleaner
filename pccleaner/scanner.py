@@ -74,6 +74,7 @@ def scan(
     cancel: threading.Event | None = None,
     on_progress: Callable[[ScanProgress], None] | None = None,
     incremental: bool = True,
+    prune: bool = True,
 ) -> int:
     """Scan ``root`` and return the new scan id. Never modifies anything on disk.
 
@@ -94,9 +95,12 @@ def scan(
     # harmless, so it skips the wait for the disk (the action log never does).
     conn.execute("PRAGMA synchronous=NORMAL")
     try:
-        return _scan(conn, root, progress, cancel, on_progress, incremental)
+        sid = _scan(conn, root, progress, cancel, on_progress, incremental)
     finally:
         conn.execute("PRAGMA synchronous=FULL")
+    if prune:  # the app prunes after showing the result instead (JobManager ``after``)
+        prune_scans(root)
+    return sid
 
 
 def _scan(conn, root, progress, cancel, on_progress, incremental) -> int:
@@ -265,7 +269,6 @@ def _scan(conn, root, progress, cancel, on_progress, incremental) -> int:
         conn.commit()
         raise
     progress.reused_dirs = reused
-    prune_scans(root)
     if on_progress:
         on_progress(progress)
     return scan_id
@@ -273,6 +276,15 @@ def _scan(conn, root, progress, cancel, on_progress, incremental) -> int:
 
 def prune_scans(root: str, keep: int = KEEP_SCANS_PER_FOLDER) -> int:
     """Delete all but the newest ``keep`` finished scans of ``root`` (the database stays small)."""
+    conn = db.connect()
+    conn.execute("PRAGMA synchronous=NORMAL")  # old reports only: no need to wait for the disk
+    try:
+        return _prune(conn, root, keep)
+    finally:
+        conn.execute("PRAGMA synchronous=FULL")
+
+
+def _prune(conn, root: str, keep: int) -> int:
     ids = [r["id"] for r in db.connect().execute(
         "SELECT id FROM scans WHERE root=? AND status IN ('done','error') ORDER BY id DESC", (root,))]
     for sid in ids[keep:]:
