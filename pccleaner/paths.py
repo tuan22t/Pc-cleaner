@@ -344,3 +344,18 @@ def list_locations() -> list[dict]:
             continue
         locs.append({"path": path, "label": label, "total": du.total, "used": du.used, "free": du.free})
     return locs
+
+
+def lp(path) -> str:
+    """Windows: the same path in ``\\\\?\\`` form when it is near the old 260-character
+    limit, so files deep inside folders can still be moved and restored.
+    Elsewhere (and for short paths) the path is returned unchanged."""
+    path = str(path)
+    if not IS_WINDOWS or len(path) < 240 or path.startswith("\\\\?\\"):
+        return path
+    import ntpath
+
+    path = ntpath.abspath(path)
+    if path.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + path[2:]
+    return "\\\\?\\" + path

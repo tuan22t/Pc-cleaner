@@ -86,12 +86,14 @@ def find_duplicates(
     cancel = cancel or threading.Event()
     conn = db.connect()
     sep = os.sep
+    big = ("AND " + db.BIG_FILE_SQL) if min_size >= db.BIG_FILE else ""
+    src, args = db.scan_files(conn, scan_id)
+    lo = max(min_size, 1)
     rows = conn.execute(
-        """SELECT f.size, f.mtime, rtrim(d.path, ?) || ? || f.name AS path FROM files f
-           JOIN dirs d ON d.scan_id=f.scan_id AND d.id=f.dir_id
-           WHERE f.scan_id=? AND f.size>=? AND f.size IN (
-               SELECT size FROM files WHERE scan_id=? AND size>=? GROUP BY size HAVING COUNT(*)>1)""",
-        (sep, sep, scan_id, max(min_size, 1), scan_id, max(min_size, 1)),
+        f"""SELECT f.size, f.mtime, rtrim(d.path, ?) || ? || f.name AS path {src}
+           AND f.size>=? {big.replace("size", "f.size")} AND f.size IN (
+               SELECT f.size {src} AND f.size>=? {big.replace("size", "f.size")} GROUP BY f.size HAVING COUNT(*)>1)""",
+        (sep, sep, *args, lo, *args, lo),
     ).fetchall()
     by_size: dict[int, list[tuple[str, float]]] = defaultdict(list)
     for r in rows:

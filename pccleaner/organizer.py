@@ -71,7 +71,7 @@ def preview(folder: str, by_year: bool = True) -> dict:
     return {"folder": folder, "moves": plan, "summary": sorted(summary.values(), key=lambda x: -x["count"])}
 
 
-def apply(folder: str, chosen: list[str], by_year: bool = True) -> dict:
+def apply(folder: str, chosen: list[str], by_year: bool = True, cancel=None, progress=None, on_progress=None) -> dict:
     """Carry out the previewed moves for the chosen source files.
 
     The plan is computed again here, so only moves the preview would show can
@@ -82,4 +82,5 @@ def apply(folder: str, chosen: list[str], by_year: bool = True) -> dict:
     moves = [(m["src"], m["dest"]) for m in fresh["moves"] if os.path.normcase(m["src"]) in wanted]
     if not moves:
         raise ValueError("Chưa chọn file nào để sắp xếp")
-    return quarantine.move_files(moves, f"Sắp xếp thư mục: {os.path.basename(fresh['folder']) or fresh['folder']}")
+    return quarantine.move_files(moves, f"Sắp xếp thư mục: {os.path.basename(fresh['folder']) or fresh['folder']}",
+                                 cancel=cancel, progress=progress, on_progress=on_progress)

@@ -141,6 +141,16 @@ async function startScan(path) {
   try { await api("scan", { path }); pollJob(); } catch (e) { toast(e.message, { err: true }); }
 }
 $("#jobCancel").onclick = () => api("cancel", {});
+// File-changing actions (clean, undo, organize…) run in the background with progress
+// and a Stop button. Resolves with the action's result when it finishes.
+function runAction(endpoint, body) {
+  return new Promise(async (resolve, reject) => {
+    try { await api(endpoint, body); } catch (e) { reject(e); return; }
+    state.actionWaiter = { resolve, reject };
+    pollJob();
+  });
+}
+const stopped = (r) => (r && r.cancelled ? " Đã dừng giữa chừng theo yêu cầu: phần chưa làm vẫn giữ nguyên." : "");
 function pollJob() {
   clearInterval(state.polling);
   const tick = async () => {
@@ -158,8 +168,9 @@ function pollJob() {
         $(".progress").classList.add("indeterminate"); $("#jobProgress").style.width = "30%";
       } else {
         const pct = p.total ? Math.floor(100 * p.done / p.total) : 0;
-        const what = { duplicates: "Đang tìm file trùng", similar: "Đang tìm ảnh giống nhau", junk: "Đang kiểm tra rác hệ thống" }[j.kind] || "Đang xử lý";
-        $("#jobTitle").textContent = `${what}: ${p.stage || ""}${p.total ? ` (${pct}%)` : ""}`;
+        const what = { duplicates: "Đang tìm file trùng", similar: "Đang tìm ảnh giống nhau", junk: "Đang kiểm tra rác hệ thống" }[j.kind] || "";
+        const stage = j.kind === "action" ? (p.stage || j.label || "Đang xử lý") : `${what}: ${p.stage || ""}`;
+        $("#jobTitle").textContent = `${stage}${p.total ? ` (${pct}%)` : ""}`;
         $("#jobDetail").textContent = `${el}${p.total ? ` · ${num(p.done)}/${num(p.total)} file` : ""}`;
         $(".progress").classList.toggle("indeterminate", !p.total);
         $("#jobProgress").style.width = p.total ? pct + "%" : "30%";
@@ -169,6 +180,12 @@ function pollJob() {
     clearInterval(state.polling); bar.classList.add("hidden");
     if (state.lastJob === j.started) return;
     state.lastJob = j.started;
+    if (j.kind === "action") {
+      const w = state.actionWaiter; state.actionWaiter = null;
+      if (w) { j.state === "done" ? w.resolve(j.result) : w.reject(new Error(j.state === "error" ? j.error : "Đã dừng lại.")); }
+      else if (j.state === "done") { toast("Thao tác chạy nền đã xong." + stopped(j.result)); refreshBadge(); render(state.view); }
+      return;
+    }
     if (j.state === "done" && j.kind === "scan") { await loadScans(); selectScan(j.result); toast("Quét xong. Đây là các thư mục chiếm nhiều chỗ nhất."); show("usage"); }
     else if (j.state === "done" && j.kind === "duplicates") { toast(j.result ? `Tìm thấy ${j.result} nhóm file trùng.` : "Không có file trùng nào. Máy anh/chị khá gọn!"); if (state.view === "dups") renderDups(); }
     else if (j.state === "done" && j.kind === "similar") { toast(j.result ? `Tìm thấy ${j.result} nhóm ảnh giống nhau.` : "Không có ảnh nào giống nhau."); if (state.view === "similar") renderSimilar(); }
@@ -349,21 +366,24 @@ $("#selClean").onclick = async () => {
     const body = { paths: files, reason: SELECTABLE[key], allow_cloud: cloudFiles.length > 0 };
     if (key === "dups") body.dup_scan_id = state.scanId;
     if (key === "similar") body.similar_scan_id = state.scanId;
-    const r = await api("quarantine", body);
+    const r = await runAction("quarantine", body);
     sel.clear(); refreshBadge();
     if (r.failed.length) {
       await dialog(r.moved ? `Đã dọn ${num(r.moved)} file, ${num(r.failed.length)} file được giữ nguyên` : "Không dọn được file nào",
         `<p>${r.moved ? `Đã chuyển ${fmt(r.bytes)} vào khu cách ly. ` : ""}Những file dưới đây được giữ nguyên:</p>
          <div class="list small scroll">${r.failed.map((f) => `<div class="row"><div class="name"><div class="t">${esc(f.path)}</div><div class="p">${esc(f.error)}</div></div></div>`).join("")}</div>`, "Đã hiểu", null);
     }
-    if (r.moved) toast(`Đã dọn ${num(r.moved)} file (${fmt(r.bytes)}).`, { action: "↩ Hoàn tác", onAction: () => undo(r.batch_id) });
+    if (r.moved) toast(`Đã dọn ${num(r.moved)} file (${fmt(r.bytes)}).` + stopped(r), { action: "↩ Hoàn tác", onAction: () => undo(r.batch_id) });
+    else if (r.cancelled) toast(stopped(r));
     render(state.view);
   } catch (e) { toast(e.message, { err: true }); }
 };
 async function undo(batchId) {
   try {
-    const r = await api("restore", { batch_id: batchId });
-    toast(`Đã trả ${num(r.restored)} file về chỗ cũ.` + (r.failed.length ? ` ${num(r.failed.length)} file không trả về được.` : ""), { err: r.failed.length > 0 });
+    const r = await runAction("restore", Array.isArray(batchId) ? { batch_ids: batchId } : { batch_id: batchId });
+    toast(`Đã trả ${num(r.restored)} file về chỗ cũ.` + (r.failed.length ? ` ${num(r.failed.length)} file không trả về được.` : "") +
+      (r.renamed && r.renamed.length ? ` ${num(r.renamed.length)} file đã có file mới cùng tên nên được trả về với tên thêm "(khôi phục)".` : "") +
+      (r.cancelled ? " Đã dừng giữa chừng: bấm Lấy lại lần nữa để trả nốt." : ""), { err: r.failed.length > 0 });
     refreshBadge(); render(state.view);
   } catch (e) { toast(e.message, { err: true }); }
 }
@@ -395,7 +415,7 @@ async function renderQuarantine() {
   $$("[data-restore]").forEach((b) => b.onclick = () => undo(b.dataset.restore));
   $$("[data-purge]").forEach((b) => b.onclick = async () => {
     if (!(await dialog("Xóa vĩnh viễn lần dọn này?", "<p>Các file trong lần dọn này sẽ bị <b>xóa hẳn khỏi máy</b> và <b>không thể lấy lại</b>.</p>", "Xóa vĩnh viễn"))) return;
-    const r = await api("purge", { batch_id: b.dataset.purge }).catch((e) => toast(e.message, { err: true }));
+    const r = await runAction("purge", { batch_id: b.dataset.purge }).catch((e) => toast(e.message, { err: true }));
     if (r) toast(`Đã giải phóng ${fmt(r.freed)}.`);
     renderQuarantine();
   });
@@ -461,9 +481,9 @@ $("#junkClean").onclick = async () => {
   if (!ids.length) return;
   if (!(await dialog("Dọn rác hệ thống?", "<p>Các file sẽ được chuyển vào <b>Khu cách ly</b> (lấy lại được). File đang được chương trình khác sử dụng hoặc cần quyền quản trị sẽ được bỏ qua.</p><p class=\"muted\">Nên đóng trình duyệt trước khi dọn bộ nhớ đệm trình duyệt.</p>", "🧹 Dọn ngay"))) return;
   try {
-    const r = await api("junk-clean", { ids });
-    toast(`Đã dọn ${num(r.moved)} file rác (${fmt(r.bytes)}).${r.skipped ? ` Bỏ qua ${num(r.skipped)} file đang dùng hoặc cần quyền.` : ""}`,
-      r.batch_ids.length ? { action: "↩ Hoàn tác", onAction: async () => { for (const b of r.batch_ids) await api("restore", { batch_id: b }); toast("Đã trả lại các file rác về chỗ cũ."); refreshBadge(); } } : {});
+    const r = await runAction("junk-clean", { ids });
+    toast(`Đã dọn ${num(r.moved)} file rác (${fmt(r.bytes)}).${r.skipped ? ` Bỏ qua ${num(r.skipped)} file đang dùng hoặc cần quyền.` : ""}` + stopped(r),
+      r.batch_ids.length ? { action: "↩ Hoàn tác", onAction: () => undo(r.batch_ids) } : {});
     refreshBadge(); state.junk = null; await api("junk-scan", {}); pollJob();
   } catch (e) { toast(e.message, { err: true }); }
 };
@@ -563,7 +583,7 @@ $("#orgApply").onclick = async () => {
   const chosen = $$("[data-orgsel]:checked").map((c) => c.value);
   if (!chosen.length) return;
   try {
-    const r = await api("organize-apply", { folder: state.org.folder, chosen, by_year: $("#orgByYear").checked });
+    const r = await runAction("organize-apply", { folder: state.org.folder, chosen, by_year: $("#orgByYear").checked });
     toast(`Đã sắp xếp ${num(r.moved)} file.` + (r.failed.length ? ` ${num(r.failed.length)} file giữ nguyên.` : ""),
       { err: r.failed.length > 0, action: "↩ Hoàn tác", onAction: () => undo(r.batch_id).then(previewOrganize) });
     previewOrganize();
@@ -578,7 +598,8 @@ async function renderSchedule() {
   $("#schJunk").checked = c.junk; $("#schPurge").value = String(c.purge_days);
   const last = c.last_run;
   $("#schStatus").innerHTML = (!c.supported ? `<div class="info">Dọn dẹp theo lịch dành cho Windows và macOS.</div>` : "") +
-    `<p>${c.enabled ? (c.registered ? "✅ Lịch đang bật và đã được đăng ký với hệ điều hành." : "⚠️ Lịch đang bật nhưng chưa đăng ký được với hệ điều hành. Hãy bấm Lưu lịch lần nữa.") : "Lịch đang tắt."}</p>` +
+    (c.enabled && c.health && !c.health.ok ? `<div class="info warn">⚠️ ${esc(c.health.message)}</div>` :
+    `<p>${c.enabled ? (c.registered ? "✅ Lịch đang bật và đã được đăng ký với hệ điều hành." : "⚠️ Lịch đang bật nhưng chưa đăng ký được với hệ điều hành. Hãy bấm Lưu lịch lần nữa.") : "Lịch đang tắt."}</p>`) +
     (last && last.skipped ? `<p class="muted">Lần chạy gần nhất: ${fmtDate(last.ts)} · ${esc(last.skipped)}.</p>` : last ? `<p class="muted">Lần chạy gần nhất: ${fmtDate(last.ts)} · dọn ${num(last.junk_moved)} file rác (${fmt(last.junk_bytes)})${last.purged_bytes ? ` · xóa hẳn ${fmt(last.purged_bytes)} trong khu cách ly` : ""}.</p>` : `<p class="muted">Chưa chạy lần nào.</p>`) +
     `<p class="muted">Khu cách ly đang giữ ${fmt(c.pending_bytes)}.</p>`;
 }
@@ -590,7 +611,7 @@ $("#schSave").onclick = async () => {
 };
 $("#schRunNow").onclick = async () => {
   if (!(await dialog("Chạy dọn dẹp tự động ngay?", "<p>Ứng dụng sẽ làm đúng những gì lịch sẽ làm: dọn các mục rác hệ thống <b>an toàn</b> vào khu cách ly" + (+$("#schPurge").value ? ", và xóa hẳn file đã nằm trong khu cách ly quá số ngày đã chọn" : "") + ".</p>", "Chạy ngay"))) return;
-  try { const r = await api("schedule-run", {}); toast(`Đã dọn ${num(r.junk_moved)} file rác (${fmt(r.junk_bytes)}).`); refreshBadge(); renderSchedule(); } catch (e) { toast(e.message, { err: true }); }
+  try { const r = await runAction("schedule-run", {}); toast(`Đã dọn ${num(r.junk_moved)} file rác (${fmt(r.junk_bytes)}).`); refreshBadge(); renderSchedule(); } catch (e) { toast(e.message, { err: true }); }
 };
 
 window.addEventListener("resize", () => { if (state.view === "usage") renderUsage(); });

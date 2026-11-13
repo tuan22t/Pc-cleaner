@@ -111,8 +111,9 @@ class CoreTest(unittest.TestCase):
         r = quarantine.quarantine([str(target)], "test")
         target.write_bytes(b"new file in the same place")
         back = quarantine.restore(r["batch_id"])
-        self.assertEqual(back["restored"], 0)
         self.assertEqual(target.read_bytes(), b"new file in the same place")
+        self.assertEqual(back["restored"], 1)  # the old copy comes back under a new name
+        self.assertTrue(Path(back["renamed"][0]["restored_as"]).exists())
 
     def test_scan_cancel_leaves_nothing(self):
         import threading

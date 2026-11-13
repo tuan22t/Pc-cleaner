@@ -26,8 +26,16 @@ class SimProgress:
     current: str = ""
 
 
+# Images above this many pixels are skipped: a crafted or corrupt file could
+# otherwise claim a huge size and use gigabytes of memory while decoding.
+# 150 megapixels covers the largest camera sensors sold today.
+MAX_PIXELS = 150_000_000
+
+
 def _open_image(path: str):
     from PIL import Image  # imported lazily: only this feature needs Pillow
+
+    Image.MAX_IMAGE_PIXELS = MAX_PIXELS  # Pillow's own guard, as a second line
 
     if path.lower().endswith((".heic", ".heif")):
         try:
@@ -36,7 +44,12 @@ def _open_image(path: str):
             pillow_heif.register_heif_opener()
         except ImportError:
             raise OSError("Cần cài pillow-heif để đọc ảnh HEIC")
-    return Image.open(path)
+    im = Image.open(path)  # reads only the header; pixels are decoded later
+    w, h = im.size
+    if w * h > MAX_PIXELS:
+        im.close()
+        raise OSError(f"Ảnh quá lớn ({w}×{h}), bỏ qua")
+    return im
 
 
 def dhash(path: str) -> tuple[int, int, int]:
@@ -73,11 +86,11 @@ def find_similar(
     conn = db.connect()
     sep = os.sep
     marks = ",".join("?" * len(IMAGE_EXTS))
+    src, args = db.scan_files(conn, scan_id)
     rows = conn.execute(
-        f"""SELECT f.size, f.mtime, rtrim(d.path, ?) || ? || f.name AS path FROM files f
-            JOIN dirs d ON d.scan_id=f.scan_id AND d.id=f.dir_id
-            WHERE f.scan_id=? AND f.size>=? AND f.ext IN ({marks})""",
-        (sep, sep, scan_id, min_size, *IMAGE_EXTS),
+        f"""SELECT f.size, f.mtime, rtrim(d.path, ?) || ? || f.name AS path {src}
+            AND f.size>=? AND f.ext IN ({marks})""",
+        (sep, sep, *args, min_size, *IMAGE_EXTS),
     ).fetchall()
     progress.total = len(rows)
     images: list[tuple[str, int, float, int, int, int]] = []  # path, size, mtime, hash, w, h
