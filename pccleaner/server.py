@@ -192,7 +192,12 @@ def route(method: str, path: str, q: dict, body: dict):
         files = body.get("paths") or []
         if not isinstance(files, list) or not files:
             raise ValueError("Chưa chọn file nào")
-        return quarantine.quarantine([str(p) for p in files], str(body.get("reason", "")))
+        files = [str(p) for p in files]
+        refused: list[dict] = []
+        if body.get("dup_scan_id") is not None:
+            # Duplicates are re-verified on disk right before anything moves.
+            files, refused = duplicates.check_removal(int(body["dup_scan_id"]), files)
+        return quarantine.quarantine(files, str(body.get("reason", "")), refused)
     if key == ("GET", "batches"):
         return quarantine.batches()
     if key == ("GET", "log"):

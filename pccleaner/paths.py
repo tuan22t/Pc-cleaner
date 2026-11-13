@@ -73,13 +73,25 @@ def protected_roots() -> list[str]:
 
 
 def is_protected(path: str | os.PathLike) -> bool:
-    p = _norm(path)
-    for root in protected_roots():
-        if p == root or p.startswith(root + os.sep):
-            return True
-    # Never touch a drive/volume root itself.
-    if os.path.dirname(p) == p:
+    """True if ``path`` is, or lies inside, a protected folder.
+
+    Both the path as given and its fully resolved form are checked, so a
+    symlink or junction that leads into a system folder cannot be used to
+    reach files there.
+    """
+    roots = protected_roots()
+    candidates = {_norm(path)}
+    try:
+        candidates.add(_norm(os.path.realpath(path)))
+    except (OSError, ValueError):
         return True
+    for p in candidates:
+        # Never touch a drive/volume root itself.
+        if os.path.dirname(p) == p:
+            return True
+        for root in roots:
+            if p == root or p.startswith(root + os.sep):
+                return True
     return False
 
 

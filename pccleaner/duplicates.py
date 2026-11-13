@@ -22,6 +22,20 @@ class DupProgress:
     current: str = ""
 
 
+# Windows cloud placeholders (OneDrive "online-only" files): reading them would
+# download them, so they are left out of duplicate checks.
+_CLOUD_ATTRS = 0x1000 | 0x40000 | 0x400000  # OFFLINE | RECALL_ON_OPEN | RECALL_ON_DATA_ACCESS
+
+
+def _is_cloud_placeholder(path: str) -> bool:
+    if not paths.IS_WINDOWS:
+        return False
+    try:
+        return bool(getattr(os.stat(path), "st_file_attributes", 0) & _CLOUD_ATTRS)
+    except OSError:
+        return True
+
+
 def _partial_hash(path: str, size: int) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -72,17 +86,15 @@ def find_duplicates(
     conn = db.connect()
     sep = os.sep
     rows = conn.execute(
-        """SELECT f.size, f.mtime, d.path || ? || f.name AS path FROM files f
+        """SELECT f.size, f.mtime, rtrim(d.path, ?) || ? || f.name AS path FROM files f
            JOIN dirs d ON d.scan_id=f.scan_id AND d.id=f.dir_id
            WHERE f.scan_id=? AND f.size>=? AND f.size IN (
                SELECT size FROM files WHERE scan_id=? AND size>=? GROUP BY size HAVING COUNT(*)>1)""",
-        (sep, scan_id, max(min_size, 1), scan_id, max(min_size, 1)),
+        (sep, sep, scan_id, max(min_size, 1), scan_id, max(min_size, 1)),
     ).fetchall()
-    # Fix double separators when the parent is a drive root (e.g. "C:\\").
     by_size: dict[int, list[tuple[str, float]]] = defaultdict(list)
     for r in rows:
-        p = r["path"].replace(sep + sep, sep) if not r["path"].startswith(sep + sep) else r["path"]
-        by_size[r["size"]].append((p, r["mtime"]))
+        by_size[r["size"]].append((r["path"], r["mtime"]))
 
     def tick(path: str):
         progress.done += 1
@@ -103,6 +115,8 @@ def find_duplicates(
             c = _cached(conn, path, size, mtime)
             ph = c["partial"] if c and c["partial"] else None
             if ph is None:
+                if _is_cloud_placeholder(path):
+                    continue
                 try:
                     ph = _partial_hash(path, size)
                 except OSError:
@@ -173,3 +187,63 @@ def get_groups(scan_id: int, limit: int = 500) -> dict:
         (scan_id,),
     ).fetchone()
     return {"groups": out, "group_count": total["n"], "wasted": per_group["w"]}
+
+
+def check_removal(scan_id: int, to_remove: list[str]) -> tuple[list[str], list[dict]]:
+    """Re-check duplicates right before they are moved.
+
+    A file is allowed only if its content still matches its group right now,
+    and at least one copy with that same content stays on disk. If every copy
+    of a group was selected, the first one is kept back.
+    Returns (allowed paths, refused [{path, error}]).
+    """
+    conn = db.connect()
+    never = threading.Event()
+    removing = {os.path.normcase(os.path.abspath(p)) for p in to_remove}
+
+    def matches(path: str, expected: str) -> bool:
+        try:
+            return os.path.isfile(path) and _full_hash(path, never) == expected
+        except OSError:
+            return False
+
+    allowed: list[str] = []
+    refused: list[dict] = []
+    by_group: dict[int, list[str]] = defaultdict(list)
+    hashes: dict[int, str] = {}
+    for path in to_remove:
+        row = conn.execute(
+            "SELECT group_id, hash FROM dup_groups WHERE scan_id=? AND path=?", (scan_id, path)
+        ).fetchone()
+        if row is None:
+            refused.append({"path": path, "error": "Không thuộc nhóm file trùng nào"})
+            continue
+        by_group[row["group_id"]].append(path)
+        hashes[row["group_id"]] = row["hash"]
+
+    for gid, selected in by_group.items():
+        expected = hashes[gid]
+        keeper = None
+        for m in conn.execute("SELECT path FROM dup_groups WHERE scan_id=? AND group_id=?", (scan_id, gid)):
+            other = m["path"]
+            if os.path.normcase(os.path.abspath(other)) not in removing and matches(other, expected):
+                keeper = other
+                break
+        candidates = list(selected)
+        if keeper is None:
+            # Every remaining copy was selected: keep the first one that still matches.
+            for p in candidates:
+                if matches(p, expected):
+                    keeper = p
+                    break
+            if keeper is None:
+                refused += [{"path": p, "error": "Không còn bản nào giống hệt để giữ lại"} for p in candidates]
+                continue
+            candidates.remove(keeper)
+            refused.append({"path": keeper, "error": "Giữ lại bản cuối cùng của nhóm"})
+        for p in candidates:
+            if matches(p, expected):
+                allowed.append(p)
+            else:
+                refused.append({"path": p, "error": "Nội dung file đã thay đổi từ lần quét trước"})
+    return allowed, refused

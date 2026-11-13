@@ -76,6 +76,64 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(quarantine.purge_batch(r["batch_id"])["freed"], 300_000)
         self.assertEqual(quarantine.restore(r["batch_id"])["restored"], 0)
 
+    def test_symlink_into_system_folder_refused(self):
+        if paths.IS_WINDOWS:
+            self.skipTest("symlinks need admin rights on Windows")
+        link = self.root / "sneaky"
+        os.symlink("/usr/bin", link)
+        target = link / "env"
+        self.assertTrue(paths.is_protected(target))
+        r = quarantine.quarantine([str(target)], "test")
+        self.assertEqual(r["moved"], 0)
+        self.assertTrue(os.path.exists("/usr/bin/env"))
+
+    def test_duplicate_removal_keeps_one_copy(self):
+        sid = scanner.scan(str(self.root))
+        duplicates.find_duplicates(sid, min_size=1000)
+        files = [f["path"] for f in duplicates.get_groups(sid)["groups"][0]["files"]]
+        # Asking to remove every copy must leave at least one behind.
+        allowed, refused = duplicates.check_removal(sid, files)
+        self.assertEqual(len(allowed), 2)
+        self.assertEqual(len(refused), 1)
+        self.assertTrue(os.path.exists(refused[0]["path"]))
+
+    def test_duplicate_changed_since_scan_refused(self):
+        sid = scanner.scan(str(self.root))
+        duplicates.find_duplicates(sid, min_size=1000)
+        files = [f["path"] for f in duplicates.get_groups(sid)["groups"][0]["files"]]
+        Path(files[1]).write_bytes(b"changed" * 1000)
+        allowed, refused = duplicates.check_removal(sid, [files[1]])
+        self.assertEqual(allowed, [])
+        self.assertIn("thay đổi", refused[0]["error"])
+
+    def test_restore_does_not_overwrite(self):
+        target = self.root / "c" / "three.bin"
+        r = quarantine.quarantine([str(target)], "test")
+        target.write_bytes(b"new file in the same place")
+        back = quarantine.restore(r["batch_id"])
+        self.assertEqual(back["restored"], 0)
+        self.assertEqual(target.read_bytes(), b"new file in the same place")
+
+    def test_scan_cancel_leaves_nothing(self):
+        import threading
+        ev = threading.Event()
+        ev.set()
+        with self.assertRaises(scanner.Cancelled):
+            scanner.scan(str(self.root), cancel=ev)
+        self.assertEqual(scanner.latest_scans(), [])
+
+    def test_scan_skips_links_and_junctions(self):
+        loop = self.root / "a" / "loop"
+        if paths.IS_WINDOWS:
+            import subprocess
+            subprocess.run(["cmd", "/c", "mklink", "/J", str(loop), str(self.root)], check=True, capture_output=True)
+        else:
+            os.symlink(self.root, loop)
+        sid = scanner.scan(str(self.root))
+        self.assertEqual(scanner.get_scan(sid)["file_count"], 5)
+        # The link itself must never be offered for removal through its target.
+        self.assertTrue(os.path.isdir(loop))
+
 
 def tearDownModule():
     shutil.rmtree(TMP, ignore_errors=True)

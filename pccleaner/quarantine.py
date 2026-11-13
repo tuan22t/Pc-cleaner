@@ -24,12 +24,19 @@ def _log(conn, batch_id, kind, path, stored_at=None, size=0, reason=None):
     )
 
 
-def quarantine(file_paths: list[str], reason: str = "") -> dict:
-    """Move files into quarantine. Returns a summary with the batch id for undo."""
+def quarantine(file_paths: list[str], reason: str = "", refused: list[dict] | None = None) -> dict:
+    """Move files into quarantine. Returns a summary with the batch id for undo.
+
+    ``refused`` lists files a caller already decided not to move; they are
+    logged and reported alongside any failures here.
+    """
     conn = db.connect()
     batch_id = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
     dest_root = paths.quarantine_dir() / batch_id
     moved, failed, total = [], [], 0
+    for item in refused or []:
+        _log(conn, batch_id, "error", item["path"], None, 0, f"{reason}: {item['error']}")
+        failed.append(item)
     for i, src in enumerate(file_paths):
         src = os.path.abspath(src)
         try:
@@ -103,7 +110,7 @@ def purge_batch(batch_id: str) -> dict:
         try:
             if r["stored_at"] and os.path.exists(r["stored_at"]):
                 os.remove(r["stored_at"])
-            freed += r["size"]
+                freed += r["size"]
             conn.execute("UPDATE actions SET restored=2 WHERE id=?", (r["id"],))
             _log(conn, batch_id, "purge", r["path"], r["stored_at"], r["size"])
         except OSError as e:

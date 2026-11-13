@@ -256,7 +256,9 @@ $$("[data-quarantine]").forEach((b) => b.onclick = async () => {
      <div class="list small" style="max-height:200px;overflow:auto">${files.slice(0, 50).map((f) => `<div class="row">${esc(f)}</div>`).join("")}${files.length > 50 ? `<div class="row muted">… và ${files.length - 50} file khác</div>` : ""}</div>`);
   if (!ok) return;
   try {
-    const r = await api("quarantine", { paths: files, reason: { large: "File lớn", old: "File cũ", dups: "File trùng lặp" }[key] });
+    const body = { paths: files, reason: { large: "File lớn", old: "File cũ", dups: "File trùng lặp" }[key] };
+    if (key === "dups") body.dup_scan_id = state.scanId;
+    const r = await api("quarantine", body);
     state.sel[key].clear();
     toast(`Đã cách ly ${r.moved} file (${fmt(r.bytes)}).` + (r.failed.length ? ` ${r.failed.length} file không chuyển được.` : ""), r.failed.length > 0);
     render(state.view);

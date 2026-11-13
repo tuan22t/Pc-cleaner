@@ -89,10 +89,14 @@ def scan(
                             full = entry.path
                             if os.path.normcase(full) in skip:
                                 continue
-                            # Skip Windows junctions / reparse points to avoid loops.
+                            # Skip Windows junctions and directory symlinks (they can loop
+                            # or lead elsewhere), but keep other reparse points such as
+                            # OneDrive folders.
                             if paths.IS_WINDOWS:
                                 st = entry.stat(follow_symlinks=False)
-                                if getattr(st, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+                                if getattr(st, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT and getattr(
+                                    st, "st_reparse_tag", 0
+                                ) in (0xA0000003, 0xA000000C):  # mount point (junction), symlink
                                     continue
                             new_id = len(dir_paths)
                             dir_paths.append(full)
@@ -285,7 +289,7 @@ def old_files(scan_id: int, older_than_days: int = 365, min_size: int = 50 * 102
         (scan_id, min_size, cutoff, limit),
     ).fetchall()
     return [
-        {"path": r["dpath"].rstrip(sep) + sep + r["name"], "name": r["name"], "size": r["size"],
-         "mtime": r["mtime"], "category": category_of(r["ext"])}
+        {"path": (p := r["dpath"].rstrip(sep) + sep + r["name"]), "name": r["name"], "size": r["size"],
+         "mtime": r["mtime"], "category": category_of(r["ext"]), "protected": paths.is_protected(p)}
         for r in rows
     ]
