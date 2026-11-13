@@ -12,6 +12,7 @@ const state = {
   shown: { large: [], old: [], dups: [], similar: [] },                            // selectable paths on screen
   junk: null, startup: null, startupFilter: "all", restorePointDone: false, org: null,
   polling: null, lastJob: null,
+  cloud: new Map(), // path -> sync service (OneDrive, Dropbox…) for files shown in lists
 };
 
 async function api(path, body) {
@@ -229,15 +230,20 @@ function bindReveal(scope) {
 }
 
 // ---------- selectable file lists ----------
+// Why a file cannot be offered for cleanup, and the cloud service a file syncs with.
+const lockAttr = (f) => f.protected ? `title="${esc(f.why || "Được bảo vệ, ứng dụng không cho phép dọn.")}"` : "";
+const lockTag = (f) => `<span class="tag keep" ${lockAttr(f)}>${f.why && !/hệ thống/i.test(f.why) ? "Được bảo vệ" : "Hệ thống"}</span>`;
+const cloudTag = (f) => f.cloud ? ` <span class="tag warn-tag" title="Dọn file này sẽ xóa nó khỏi ${esc(f.cloud)} trên mọi thiết bị.">☁ ${esc(f.cloud)}</span>` : "";
+function noteCloud(f) { if (f.cloud) state.cloud.set(f.path, f.cloud); }
 function fileRows(list, key) {
   const sel = state.sel[key];
   const head = `<div class="row head"><span class="cb"></span><div class="name">Tên file</div><span class="kind">Loại</span><span class="when">Sửa lần cuối</span><div class="size">Dung lượng</div><span class="acts"></span></div>`;
   if (!list.length) return `<div class="empty">Không có file nào phù hợp. Thử chọn mức nhỏ hơn ở phía trên.</div>`;
   return head + list.map((f) => `
-    <label class="row ${f.protected ? "locked" : "pick"}" ${f.protected ? 'title="File của hệ thống hoặc chương trình, ứng dụng không cho phép dọn để bảo vệ máy."' : ""}>
+    ${noteCloud(f) || ""}<label class="row ${f.protected ? "locked" : "pick"}" ${lockAttr(f)}>
       <span class="cb">${f.protected ? "🔒" : `<input type="checkbox" data-sel="${key}" data-size="${f.size}" value="${esc(f.path)}" ${sel.has(f.path) ? "checked" : ""}>`}</span>
       <div class="name"><div class="t">${esc(f.name)}</div><div class="p">${esc(f.path)}</div></div>
-      <span class="kind"><span class="tag ${f.protected ? "keep" : ""}">${f.protected ? "Hệ thống" : esc(f.category)}</span></span>
+      <span class="kind">${f.protected ? lockTag(f) : `<span class="tag">${esc(f.category)}</span>`}${cloudTag(f)}</span>
       <span class="when" title="${fmtDay(f.mtime)}">${ago(f.mtime)}</span>
       <div class="size">${fmt(f.size)}</div>
       <span class="acts">${revealBtn(f.path)}</span>
@@ -309,13 +315,14 @@ async function renderDups() {
     const rows = g.files.map((f) => {
       let keep = false;
       if (!kept && f.exists) { keep = true; kept = true; }
-      if (!keep && !f.protected && f.exists) sel.set(f.path, g.size);
+      noteCloud(f);
+      // Copies in OneDrive/Dropbox/iCloud are never pre-selected: removing them removes them on every device.
+      if (!keep && !f.protected && f.exists && !f.cloud) sel.set(f.path, g.size);
       const name = f.path.split(/[\\/]/).pop();
-      const lockTitle = f.protected ? 'title="File của hệ thống, không thể dọn."' : "";
-      return `<label class="row ${f.protected || !f.exists ? "locked" : "pick"}" ${lockTitle}>
+      return `<label class="row ${f.protected || !f.exists ? "locked" : "pick"}" ${lockAttr(f)}>
         <span class="cb">${f.protected ? "🔒" : !f.exists ? "" : `<input type="checkbox" data-sel="dups" data-size="${g.size}" value="${esc(f.path)}" ${sel.has(f.path) ? "checked" : ""}>`}</span>
         <div class="name"><div class="t">${esc(name)}</div><div class="p">${esc(f.path)}</div></div>
-        <span class="kind">${keep ? '<span class="tag ok">✓ Giữ lại</span>' : f.protected ? '<span class="tag keep">Hệ thống</span>' : !f.exists ? '<span class="tag">Đã dọn</span>' : '<span class="tag">Bản thừa</span>'}</span>
+        <span class="kind">${keep ? '<span class="tag ok">✓ Giữ lại</span>' : f.protected ? lockTag(f) : !f.exists ? '<span class="tag">Đã dọn</span>' : '<span class="tag">Bản thừa</span>'}${cloudTag(f)}</span>
         <span class="when">${ago(f.mtime)}</span>
         <span class="acts">${f.exists ? revealBtn(f.path) : ""}</span></label>`;
     }).join("");
@@ -329,14 +336,17 @@ $("#selClean").onclick = async () => {
   const key = state.view; const sel = state.sel[key]; const files = [...sel.keys()];
   if (!files.length) return;
   let total = 0; sel.forEach((s) => total += s);
+  const cloudFiles = files.filter((f) => state.cloud.has(f));
+  const cloudNames = [...new Set(cloudFiles.map((f) => state.cloud.get(f)))].join(", ");
   const ok = await dialog(`Dọn ${num(files.length)} file (${fmt(total)})?`,
     `<p>Các file này sẽ được chuyển vào <b>Khu cách ly</b>, <b>chưa bị xóa vĩnh viễn</b>. Nếu cần, anh/chị có thể lấy lại bất cứ lúc nào.</p>
+     ${cloudFiles.length ? `<div class="info warn">☁ <b>${num(cloudFiles.length)} file nằm trong ${esc(cloudNames)}.</b> Dọn chúng sẽ xóa chúng khỏi ${esc(cloudNames)} trên <b>mọi máy và điện thoại</b> đang đồng bộ. Lấy lại từ khu cách ly sẽ đưa chúng trở lại.</div>` : ""}
      ${key === "dups" ? "<p class=\"muted\">Trước khi dọn, ứng dụng sẽ kiểm tra lại nội dung từng file và luôn giữ lại ít nhất một bản.</p>" : ""}
      <div class="list small scroll">${files.slice(0, 50).map((f) => `<div class="row">${esc(f)}</div>`).join("")}${files.length > 50 ? `<div class="row muted">… và ${num(files.length - 50)} file khác</div>` : ""}</div>`,
     "🧹 Dọn ngay");
   if (!ok) return;
   try {
-    const body = { paths: files, reason: SELECTABLE[key] };
+    const body = { paths: files, reason: SELECTABLE[key], allow_cloud: cloudFiles.length > 0 };
     if (key === "dups") body.dup_scan_id = state.scanId;
     if (key === "similar") body.similar_scan_id = state.scanId;
     const r = await api("quarantine", body);
@@ -405,12 +415,13 @@ async function renderSimilar() {
   $("#simList").innerHTML = d.groups.map((g) => `<div class="group"><div class="group-head"><b>${g.files.length} ảnh giống nhau</b><span class="muted">dọn bớt được ${fmt(g.saving)}</span></div>
     <div class="photo-grid">${g.files.map((f, i) => {
       const keep = i === 0 && f.exists;
-      if (!keep && f.exists && !f.protected) sel.set(f.path, f.size);
+      noteCloud(f);
+      if (!keep && f.exists && !f.protected && !f.cloud) sel.set(f.path, f.size);
       const name = f.path.split(/[\\/]/).pop();
-      return `<label class="photo ${keep ? "keep" : ""} ${!f.exists ? "gone" : ""}" title="${esc(f.path)}">
+      return `<label class="photo ${keep ? "keep" : ""} ${!f.exists ? "gone" : ""}" title="${esc(f.why ? f.why + " · " + f.path : f.path)}">
         <div class="ph-img">${f.exists ? `<img loading="lazy" src="${thumbUrl(f.path)}" alt="">` : "Đã dọn"}</div>
         <div class="ph-meta">${f.exists && !f.protected ? `<input type="checkbox" data-sel="similar" data-size="${f.size}" value="${esc(f.path)}" ${sel.has(f.path) ? "checked" : ""}>` : f.protected ? "🔒" : ""}
-          <div class="name"><div class="t">${esc(name)}</div><div class="p">${f.width}×${f.height} · ${fmt(f.size)}</div></div></div>
+          <div class="name"><div class="t">${esc(name)}</div><div class="p">${f.width}×${f.height} · ${fmt(f.size)}${f.cloud ? ` · ☁ ${esc(f.cloud)}` : ""}</div></div></div>
         ${keep ? '<span class="tag ok ph-tag">✓ Giữ lại</span>' : ""}
         ${f.exists ? `<button class="btn small ghost ph-open" data-reveal="${esc(f.path)}" title="Xem vị trí">📂</button>` : ""}
       </label>`;
@@ -568,7 +579,7 @@ async function renderSchedule() {
   const last = c.last_run;
   $("#schStatus").innerHTML = (!c.supported ? `<div class="info">Dọn dẹp theo lịch dành cho Windows và macOS.</div>` : "") +
     `<p>${c.enabled ? (c.registered ? "✅ Lịch đang bật và đã được đăng ký với hệ điều hành." : "⚠️ Lịch đang bật nhưng chưa đăng ký được với hệ điều hành. Hãy bấm Lưu lịch lần nữa.") : "Lịch đang tắt."}</p>` +
-    (last ? `<p class="muted">Lần chạy gần nhất: ${fmtDate(last.ts)} · dọn ${num(last.junk_moved)} file rác (${fmt(last.junk_bytes)})${last.purged_bytes ? ` · xóa hẳn ${fmt(last.purged_bytes)} trong khu cách ly` : ""}.</p>` : `<p class="muted">Chưa chạy lần nào.</p>`) +
+    (last && last.skipped ? `<p class="muted">Lần chạy gần nhất: ${fmtDate(last.ts)} · ${esc(last.skipped)}.</p>` : last ? `<p class="muted">Lần chạy gần nhất: ${fmtDate(last.ts)} · dọn ${num(last.junk_moved)} file rác (${fmt(last.junk_bytes)})${last.purged_bytes ? ` · xóa hẳn ${fmt(last.purged_bytes)} trong khu cách ly` : ""}.</p>` : `<p class="muted">Chưa chạy lần nào.</p>`) +
     `<p class="muted">Khu cách ly đang giữ ${fmt(c.pending_bytes)}.</p>`;
 }
 $("#schSave").onclick = async () => {

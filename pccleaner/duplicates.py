@@ -168,12 +168,13 @@ _TRANSIENT_DIRS = {"downloads", "desktop", "tải về", "temp", "tmp"}
 
 
 def _keep_rank(f: dict):
-    """Prefer a copy outside Downloads/Desktop whose name doesn't look like a copy, then the oldest."""
+    """Prefer a protected copy, then one outside Downloads/Desktop whose name doesn't look like a copy, then the oldest."""
     p = f["path"]
     parts = {x.lower() for x in re.split(r"[\\/]", p)[:-1]}
     stem = os.path.splitext(os.path.basename(p))[0]
     return (
         not f["exists"],
+        not f.get("protected"),  # a copy the app may not remove anyway is the natural one to keep
         bool(parts & _TRANSIENT_DIRS),
         bool(_LIKELY_COPY.search(stem)),
         f["mtime"],
@@ -190,7 +191,7 @@ def get_groups(scan_id: int, limit: int = 500) -> dict:
     for r in rows:
         g = groups.setdefault(r["group_id"], {"id": r["group_id"], "hash": r["hash"], "size": r["size"], "files": []})
         g["files"].append({
-            "path": r["path"], "mtime": r["mtime"], "protected": paths.is_protected(r["path"]),
+            "path": r["path"], "mtime": r["mtime"], **paths.file_flags(r["path"]),
             "exists": os.path.exists(r["path"]),
         })
     out = list(groups.values())

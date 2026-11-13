@@ -87,7 +87,7 @@ def scan(
                             continue
                         if entry.is_dir(follow_symlinks=False):
                             full = entry.path
-                            if os.path.normcase(full) in skip:
+                            if os.path.normcase(full) in skip or entry.name == paths.VOLUME_QUARANTINE:
                                 continue
                             # Skip Windows junctions and directory symlinks (they can loop
                             # or lead elsewhere), but keep other reparse points such as
@@ -162,9 +162,17 @@ def scan(
     return scan_id
 
 
+def cleanup_unfinished() -> int:
+    """Remove scans a crash left half written. Call only while holding the instance lock."""
+    ids = [r["id"] for r in db.connect().execute("SELECT id FROM scans WHERE status='running'")]
+    for sid in ids:
+        delete_scan(sid)
+    return len(ids)
+
+
 def delete_scan(scan_id: int) -> None:
     conn = db.connect()
-    for table in ("files", "dirs", "dup_groups"):
+    for table in ("files", "dirs", "dup_groups", "similar_groups"):
         conn.execute(f"DELETE FROM {table} WHERE scan_id=?", (scan_id,))
     conn.execute("DELETE FROM scans WHERE id=?", (scan_id,))
     conn.commit()
@@ -254,7 +262,7 @@ def large_files(scan_id: int, limit: int = 200, min_size: int = 0) -> list[dict]
         p = r["dpath"].rstrip(sep) + sep + r["name"]
         out.append({
             "path": p, "name": r["name"], "size": r["size"], "mtime": r["mtime"],
-            "category": category_of(r["ext"]), "protected": paths.is_protected(p),
+            "category": category_of(r["ext"]), **paths.file_flags(p),
         })
     return out
 
@@ -290,6 +298,6 @@ def old_files(scan_id: int, older_than_days: int = 365, min_size: int = 50 * 102
     ).fetchall()
     return [
         {"path": (p := r["dpath"].rstrip(sep) + sep + r["name"]), "name": r["name"], "size": r["size"],
-         "mtime": r["mtime"], "category": category_of(r["ext"]), "protected": paths.is_protected(p)}
+         "mtime": r["mtime"], "category": category_of(r["ext"]), **paths.file_flags(p)}
         for r in rows
     ]

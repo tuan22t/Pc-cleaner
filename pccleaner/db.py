@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS actions (
     id INTEGER PRIMARY KEY,
     batch_id TEXT NOT NULL,
     ts REAL NOT NULL,
-    kind TEXT NOT NULL,          -- quarantine | restore | purge | error
+    kind TEXT NOT NULL,          -- quarantine | move | mkdir | restore | purge | error | pending-quarantine | pending-move | aborted
     path TEXT NOT NULL,          -- original location
     stored_at TEXT,              -- location inside quarantine
     size INTEGER DEFAULT 0,
@@ -114,15 +114,45 @@ def db_path() -> Path:
     return _db_path
 
 
+# Schema version, stored in SQLite's user_version. Each entry upgrades the
+# database from the previous version; never edit an entry once released, add a
+# new one instead. Version 1 is the original schema (CREATE ... IF NOT EXISTS,
+# so databases made before versioning existed are adopted as version 1).
+MIGRATIONS: list[str] = [
+    SCHEMA,                                                            # 1
+    "CREATE INDEX IF NOT EXISTS actions_kind ON actions(kind);",       # 2: fast look-up of unfinished moves
+]
+SCHEMA_VERSION = len(MIGRATIONS)
+
+
+class NewerDatabaseError(RuntimeError):
+    pass
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    current = conn.execute("PRAGMA user_version").fetchone()[0]
+    if current > SCHEMA_VERSION:
+        # Written by a newer version of the app: refuse rather than risk damaging it.
+        raise NewerDatabaseError(
+            "Dữ liệu được tạo bởi phiên bản PC Cleaner mới hơn. Hãy cài lại phiên bản mới nhất."
+        )
+    for version in range(current + 1, SCHEMA_VERSION + 1):
+        conn.executescript("BEGIN;" + MIGRATIONS[version - 1] + f";PRAGMA user_version={version};COMMIT;")
+
+
 def connect() -> sqlite3.Connection:
-    """One connection per thread; WAL lets the UI read while a scan writes."""
+    """One connection per thread; WAL lets the UI read while a scan writes.
+
+    synchronous=FULL: a committed transaction survives a power cut. The action
+    log depends on this: a file is only moved after its log row is on disk.
+    """
     conn = getattr(_local, "conn", None)
     if conn is None or getattr(_local, "path", None) != db_path():
         conn = sqlite3.connect(db_path(), timeout=30)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.executescript(SCHEMA)
+        conn.execute("PRAGMA synchronous=FULL")
+        _migrate(conn)
         _local.conn = conn
         _local.path = db_path()
     return conn

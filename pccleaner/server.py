@@ -95,6 +95,12 @@ def _reveal(path: str) -> None:
         subprocess.Popen(["xdg-open", os.path.dirname(path) if os.path.isfile(path) else path])
 
 
+CSP = (
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+    "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+)
+
+
 def make_handler(token: str):
     class Handler(BaseHTTPRequestHandler):
         server_version = "PCCleaner"
@@ -106,6 +112,10 @@ def make_handler(token: str):
         def _send(self, code: int, body: bytes, ctype: str):
             self.send_response(code)
             self.send_header("Content-Type", ctype)
+            # Only the app's own files may run or load; nothing can be sent elsewhere.
+            self.send_header("Content-Security-Policy", CSP)
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
@@ -122,8 +132,15 @@ def make_handler(token: str):
         def _authorized(self) -> bool:
             return secrets.compare_digest(self.headers.get("X-Token", ""), token)
 
+        def _host_ok(self) -> bool:
+            # Blocks DNS-rebinding: a web page cannot reach this server under another name.
+            host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
+            return host in ("127.0.0.1", "localhost")
+
         # ---- routing ----
         def do_GET(self):
+            if not self._host_ok():
+                return self._send(403, b"forbidden", "text/plain")
             u = urlparse(self.path)
             if u.path == "/api/thumb":
                 return self._thumb(parse_qs(u.query))
@@ -132,6 +149,8 @@ def make_handler(token: str):
             self._api("GET", u.path, {k: v[0] for k, v in parse_qs(u.query).items()}, {})
 
         def do_POST(self):
+            if not self._host_ok():
+                return self._send(403, b"forbidden", "text/plain")
             u = urlparse(self.path)
             try:
                 body = self._body()
@@ -276,7 +295,8 @@ def route(method: str, path: str, q: dict, body: dict):
             files, refused = duplicates.check_removal(int(body["dup_scan_id"]), files)
         elif body.get("similar_scan_id") is not None:
             files, refused = similar.check_removal(int(body["similar_scan_id"]), files)
-        return quarantine.quarantine(files, str(body.get("reason", "")), refused)
+        return quarantine.quarantine(files, str(body.get("reason", "")), refused,
+                                     allow_cloud=bool(body.get("allow_cloud")))
     if key == ("GET", "batches"):
         return quarantine.batches()
     if key == ("GET", "log"):

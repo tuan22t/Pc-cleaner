@@ -185,3 +185,5 @@ nav a { display: flex; align-items: center; }
 .form-actions { display: flex; gap: 8px; }
 .spinner.inline { display: inline-block; vertical-align: middle; margin-right: 8px; }
 #view-junk .actionbar, #view-organize .actionbar { margin-top: 16px; }
+.info.warn { background: #fff4e0; border: 1px solid #f0c674; }
+@media (prefers-color-scheme: dark) { .info.warn { background: #3a2a18; border-color: #7a5a20; } }

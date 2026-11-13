@@ -126,6 +126,10 @@ def save(cfg_in: dict) -> dict:
     return get()
 
 
+def record_skipped(why: str) -> None:
+    db.set_setting("schedule_last_run", json.dumps({"ts": time.time(), "skipped": why}))
+
+
 def run_auto_clean() -> dict:
     """What the scheduled task does. Safe junk only; old quarantine is emptied."""
     cfg = get()

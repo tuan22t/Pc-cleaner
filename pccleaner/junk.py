@@ -40,6 +40,19 @@ class Category:
     file_glob: str | None = None  # only files matching this name pattern
     admin: bool = False           # usually needs administrator rights
     roots: list[str] = field(default_factory=list)
+    skip_root: object = None      # optional test(folder name) -> True to leave that folder alone
+
+
+# Caches that belong to macOS itself or to sync services. Moving them while the
+# system or the sync client runs can cause errors or a full re-sync, so they are
+# never offered, even though they are "only" caches.
+_MAC_KEEP_PREFIXES = ("com.apple.", "cloudkit", "familycircle", "geoservices", "com.microsoft.onedrive",
+                      "com.getdropbox.", "com.dropbox.", "com.google.drivefs", "com.box.")
+
+
+def _mac_keep_cache(name: str) -> bool:
+    low = name.lower()
+    return low.startswith(_MAC_KEEP_PREFIXES) or "icloud" in low
 
 
 def _env(name: str, default: str = "") -> str:
@@ -73,7 +86,7 @@ def categories() -> list[Category]:
     elif paths.IS_MAC:
         lib = os.path.join(home, "Library")
         cats += [
-            Category("mac_caches", "Bộ nhớ đệm ứng dụng", "~/Library/Caches: dữ liệu tạm các ứng dụng tự tạo lại. Không mất tài liệu hay cài đặt.", [os.path.join(lib, "Caches")]),
+            Category("mac_caches", "Bộ nhớ đệm ứng dụng", "~/Library/Caches của các ứng dụng bên thứ ba: dữ liệu tạm ứng dụng tự tạo lại. Không đụng bộ nhớ đệm của macOS và của ứng dụng đồng bộ (iCloud, OneDrive, Dropbox…).", [os.path.join(lib, "Caches", "*")], skip_root=_mac_keep_cache),
             Category("mac_logs", "Nhật ký ứng dụng", "~/Library/Logs: file ghi hoạt động của ứng dụng.", [os.path.join(lib, "Logs")], min_age_hours=24),
             Category("mac_crash", "Báo cáo lỗi", "Báo cáo khi ứng dụng bị treo hoặc thoát đột ngột.", [os.path.join(lib, "Logs", "DiagnosticReports"), os.path.join(lib, "Application Support", "CrashReporter")], min_age_hours=0),
             Category("mac_xcode", "Dữ liệu tạm của Xcode", "DerivedData và bản lưu trữ thiết bị cũ của lập trình viên.", [os.path.join(lib, "Developer", "Xcode", "DerivedData"), os.path.join(lib, "Developer", "Xcode", "iOS DeviceSupport")], label="caution", min_age_hours=24),
@@ -86,7 +99,8 @@ def categories() -> list[Category]:
     for c in cats:
         roots: list[str] = []
         for pat in c.patterns:
-            roots += [p for p in glob.glob(pat) if os.path.isdir(p) and not os.path.islink(p)]
+            roots += [p for p in glob.glob(pat) if os.path.isdir(p) and not os.path.islink(p)
+                      and not (c.skip_root and c.skip_root(os.path.basename(p)))]
         c.roots = roots
     return cats
 

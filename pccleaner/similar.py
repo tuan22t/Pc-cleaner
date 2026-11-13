@@ -173,7 +173,7 @@ def get_groups(scan_id: int, limit: int = 300) -> dict:
         g = groups.setdefault(r["group_id"], {"id": r["group_id"], "files": []})
         g["files"].append({
             "path": r["path"], "size": r["size"], "mtime": r["mtime"], "width": r["width"], "height": r["height"],
-            "distance": r["distance"], "protected": paths.is_protected(r["path"]), "exists": os.path.exists(r["path"]),
+            "distance": r["distance"], **paths.file_flags(r["path"]), "exists": os.path.exists(r["path"]),
         })
     out = list(groups.values())
     for g in out:
