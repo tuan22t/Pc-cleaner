@@ -263,7 +263,7 @@ Bộ kiểm thử tự động chạy trên cả Windows và macOS sau mỗi l�
 - Sắp xếp thư mục: xem trước đúng, không ghi đè file trùng tên, hoàn tác trả file về và xóa thư mục vừa tạo; thư mục hệ thống bị từ chối.
 - Dọn theo lịch: đăng ký và gỡ tác vụ thật với Task Scheduler/launchd; xóa hẳn khu cách ly quá hạn đúng dung lượng.
 
-Lần chạy gần nhất: Windows 25 bài kiểm thử đạt (2 bài chỉ dành cho macOS được bỏ qua), macOS 25 đạt (1 bài chỉ dành cho Windows được bỏ qua).
+Lần chạy gần nhất: 26 bài kiểm thử trên mỗi hệ điều hành, tất cả đều đạt (các bài chỉ dành cho hệ điều hành kia được bỏ qua).
 
 ## 7. Lộ trình phát triển
 
