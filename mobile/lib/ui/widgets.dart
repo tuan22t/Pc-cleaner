@@ -12,6 +12,8 @@ class ThumbCache {
   static final _m = <String, Future<Uint8List?>>{}; // insertion-ordered
   static const _max = 400;
 
+  static void clear() => _m.clear();
+
   static Future<Uint8List?> get(MediaSource s, MediaItem i, int side) {
     final k = '${i.id}@$side';
     final hit = _m.remove(k);

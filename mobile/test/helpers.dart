@@ -9,9 +9,11 @@ import 'package:pc_cleaner/data/media_source.dart';
 import 'package:pc_cleaner/i18n.dart';
 import 'package:pc_cleaner/main.dart';
 import 'package:pc_cleaner/state.dart';
+import 'package:pc_cleaner/ui/widgets.dart' show ThumbCache;
 
 Future<AppState> makeState(WidgetTester tester, {PermissionState perm = PermissionState.granted, String lang = 'vi', AppTheme theme = AppTheme.light}) async {
   late AppState s;
+  ThumbCache.clear();
   await tester.runAsync(() async {
     await loadTranslations();
     final src = DemoMediaSource(permission: perm);

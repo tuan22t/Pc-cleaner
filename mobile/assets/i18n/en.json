@@ -56,7 +56,7 @@
  "Quét lại": "Rescan",
  "Đã giải phóng {0}": "Freed {0}",
  "Đóng": "Close",
- "{0} mục đã vào thùng rác, khôi phục được trong 30 ngày.": "{0} items moved to the Trash, restorable for 30 days.",
+ "{0} mục đã vào thùng rác, khôi phục được trong 30 ngày.": "{0} item(s) moved to the Trash, restorable for 30 days.",
  "PC Cleaner miễn phí nhờ {0}. Ghé thăm khi bạn có dịp:": "PC Cleaner is free thanks to {0}. Pay a visit when you can:",
  "Mọi phân tích diễn ra ngay trên điện thoại. Ứng dụng không có quyền truy cập Internet nên không thể gửi ảnh hay dữ liệu của bạn đi đâu.": "Everything is analysed on the phone. The app has no Internet permission, so it cannot send your photos or data anywhere.",
  "Chọn theo gợi ý": "Select suggested",
@@ -100,7 +100,7 @@
  "Bỏ": "Remove",
  "Hoàn tác": "Undo",
  "Chưa chọn mục nào": "Nothing selected",
- "Chuyển {0} mục ({1}) vào thùng rác": "Move {0} items ({1}) to Trash",
+ "Chuyển {0} mục ({1}) vào thùng rác": "Move {0} item(s) ({1}) to Trash",
  "Thùng rác giữ 30 ngày, khôi phục được trong mục Nhật ký.": "The Trash keeps them 30 days; restore from History.",
  "Chưa chuyển gì vào thùng rác.": "Nothing was moved to the Trash."
 }

@@ -30,6 +30,13 @@ android {
         versionName = flutter.versionName
     }
 
+    lint {
+        // Android lint crashes inside a plugin (url_launcher) on release
+        // builds; our own checks run in CI (flutter analyze + tests).
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+
     buildTypes {
         release {
             // Test builds are signed with the debug key so they install directly.
