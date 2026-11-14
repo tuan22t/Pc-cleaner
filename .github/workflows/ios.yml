@@ -1,0 +1,56 @@
+name: iPhone
+
+# Builds an unsigned iPhone app (.ipa) from mobile/. It is signed on the
+# user's own PC with Sideloadly or AltStore and a free Apple ID (valid 7 days),
+# so no Apple Developer account is needed here.
+on:
+  push:
+    paths: ['mobile/**', '.github/workflows/ios.yml']
+  pull_request:
+    paths: ['mobile/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-15-intel
+    timeout-minutes: 50
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.50.0'
+          cache: true
+
+      - name: Install packages
+        run: flutter pub get
+
+      - name: Promo photos (packed inside the app)
+        run: python3 tool/fetch_promo_images.py
+
+      - name: Build iPhone app (unsigned)
+        run: flutter build ios --release --no-codesign
+
+      - name: Package IPA
+        run: |
+          APP=build/ios/iphoneos/Runner.app
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$APP/Info.plist"
+          mkdir -p build/ipa/Payload
+          cp -R "$APP" build/ipa/Payload/
+          cd build/ipa && zip -qr ../PC-Cleaner-iPhone-thu-nghiem.ipa Payload
+          ls -l ../PC-Cleaner-iPhone-thu-nghiem.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PC-Cleaner-iPhone-thu-nghiem
+          path: mobile/build/PC-Cleaner-iPhone-thu-nghiem.ipa
+          retention-days: 30
