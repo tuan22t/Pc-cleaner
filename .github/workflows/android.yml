@@ -1,0 +1,81 @@
+name: Android
+
+# Builds and tests the Android app in mobile/. The APK it produces is a test
+# build signed with the debug key; the Google Play upload key comes in M5.
+on:
+  push:
+    paths: ['mobile/**', '.github/workflows/android.yml']
+  pull_request:
+    paths: ['mobile/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.50.0'
+          cache: true
+
+      - name: Install packages
+        run: flutter pub get
+
+      - name: Static analysis
+        run: flutter analyze
+
+      - name: Every Vietnamese text has an English translation
+        run: python3 tool/i18n_keys.py
+
+      - name: Tests
+        run: flutter test
+
+      - name: Screenshots for the acceptance report
+        run: PCCLEANER_SCREENSHOTS=build/screens flutter test test/screenshots_test.dart
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anh-chup-man-hinh-android
+          path: mobile/build/screens/*.png
+          retention-days: 30
+
+      - name: Promo photos (packed inside the app)
+        run: python3 tool/fetch_promo_images.py
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Check the release APK has no Internet permission
+        run: |
+          AAPT=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)aapt
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          "$AAPT" dump permissions "$APK" | tee perms.txt
+          if grep -q "android.permission.INTERNET" perms.txt; then
+            echo "::error::Release APK must not request INTERNET"; exit 1
+          fi
+          grep -q "READ_MEDIA_IMAGES" perms.txt
+          "$AAPT" dump badging "$APK" | grep -E "^package:|sdkVersion|targetSdkVersion|application-label:"
+          ls -l "$APK"
+          cp "$APK" "build/PC-Cleaner-Android-thu-nghiem.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PC-Cleaner-Android-thu-nghiem
+          path: mobile/build/PC-Cleaner-Android-thu-nghiem.apk
+          retention-days: 30
