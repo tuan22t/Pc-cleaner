@@ -32,6 +32,7 @@
       <a href="#" data-view="quarantine"><span class="ni">🛟</span><span data-i18n>Khu cách ly &amp; hoàn tác</span> <span id="qBadge" class="badge hidden"></span></a>
       <a href="#" data-view="settings" class="nav-bottom"><span class="ni">⚙️</span><span data-i18n>Cài đặt</span></a>
     </nav>
+    <a href="#" id="navSponsor" class="nav-sponsor hidden"></a>
     <div class="scan-pick">
       <label data-i18n for="scanSelect">Đang xem kết quả quét</label>
       <select id="scanSelect"></select>
@@ -56,6 +57,7 @@
         <div class="card chart-card"><h2 data-i18n>Có thể dọn theo nhóm</h2><div id="dashClean"></div></div>
         <div class="card chart-card"><h2 data-i18n>Dung lượng đã dùng theo thời gian</h2><div id="dashHistory"></div></div>
       </div>
+      <div id="promoCard" class="card promo hidden" aria-live="polite"></div>
       <h2 data-i18n>Chọn nơi cần quét</h2>
       <div id="locations" class="cards"></div>
       <div class="custom-scan">
@@ -234,8 +236,30 @@
           <div><button data-i18n id="setGuide" class="btn ghost">Xem lại hướng dẫn sử dụng</button></div>
         </div>
       </div>
+      <h2 data-i18n>Cập nhật</h2>
+      <div class="card form">
+        <div class="form-grid">
+          <label data-i18n for="updChannel">Kênh cập nhật</label>
+          <select id="updChannel"><option data-i18n value="stable">Ổn định</option><option data-i18n value="beta">Thử nghiệm (beta)</option></select>
+          <label data-i18n for="updAuto">Tự kiểm tra mỗi ngày</label>
+          <div><input type="checkbox" id="updAuto"></div>
+          <label data-i18n>Phiên bản mới</label>
+          <div><span id="updStatus"></span> <button data-i18n id="updCheck" class="btn ghost">Kiểm tra ngay</button> <button data-i18n id="updGet" class="btn hidden">Tải và cài bản mới</button></div>
+        </div>
+      </div>
+      <div id="macUninstall" class="hidden">
+        <h2 data-i18n>Gỡ ứng dụng</h2>
+        <div class="card form">
+          <p data-i18n>Trên máy Mac, trước khi kéo ứng dụng vào Thùng rác, hãy bấm nút dưới đây để gỡ lịch dọn tự động. Dữ liệu và khu cách ly vẫn được giữ.</p>
+          <button data-i18n id="beforeUninstall" class="btn ghost">Chuẩn bị gỡ ứng dụng</button>
+        </div>
+      </div>
+      <h2 data-i18n>Đồng hành cùng ứng dụng</h2>
+      <p data-i18n class="muted">Ứng dụng miễn phí nhờ sự đồng hành của các cơ sở dưới đây. Bấm nút để mở trang của họ trong trình duyệt.</p>
+      <div id="promoList" class="promo-list"></div>
       <h2 data-i18n>Dữ liệu và quyền riêng tư</h2>
       <div data-i18n class="info">Kết quả quét, nhật ký và khu cách ly chỉ được lưu trên máy này. Ứng dụng không gửi dữ liệu nào ra ngoài.</div>
+      <div data-i18n class="info">Kiểm tra cập nhật chỉ tải về một tệp công khai, không gửi thông tin nào về máy hay về anh/chị.</div>
       <div id="aboutInfo" class="summary muted"></div>
     </section>
 

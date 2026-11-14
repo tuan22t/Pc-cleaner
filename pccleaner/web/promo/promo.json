@@ -1,0 +1,80 @@
+{
+ "sponsor": {
+  "vi": "Tân An Palace và Zen Hotel",
+  "en": "Tân An Palace and Zen Hotel"
+ },
+ "places": [
+  {
+   "id": "tananpalace-hotel",
+   "name": "Khách sạn Tân An Palace",
+   "tagline": {
+    "vi": "Khách sạn ngay trung tâm Hải Phòng, tiện cho du lịch, công tác và hội nghị.",
+    "en": "A hotel in central Hai Phong, handy for holidays, business trips and conferences."
+   },
+   "address": "22 Hồng Bàng, Hải Phòng",
+   "phone": "0225 3529 168",
+   "image": "tananpalace-hotel.jpg",
+   "image_url": "https://hotel.tananpalace.com/assets/img/og-tan-an-palace-hotel.jpg",
+   "links": {
+    "website": "https://hotel.tananpalace.com/",
+    "maps": "https://maps.app.goo.gl/578vUkvYq6NHB8BJ9",
+    "facebook": "https://www.facebook.com/datphongtananpalace"
+   },
+   "icon": "🏨"
+  },
+  {
+   "id": "tananpalace-wedding",
+   "name": "Tiệc cưới Tân An Palace",
+   "tagline": {
+    "vi": "Trung tâm tiệc cưới và sự kiện, sảnh 350–700 khách, có thiệp cưới online miễn phí.",
+    "en": "Wedding and event venue with halls for 350–700 guests and free online wedding invitations."
+   },
+   "address": "22 Hồng Bàng, Hải Phòng",
+   "phone": "0989 490 850",
+   "image": "tananpalace-wedding.jpg",
+   "image_url": "https://tananpalace.com/wp-content/uploads/2024/10/VTD_0063.jpg",
+   "links": {
+    "website": "https://tananpalace.com/",
+    "maps": "https://maps.google.com/maps?cid=5300943847785742150",
+    "facebook": "https://www.facebook.com/tananpalacehaiphong"
+   },
+   "icon": "💒"
+  },
+  {
+   "id": "zen-love-station",
+   "name": "Zen Love Station",
+   "tagline": {
+    "vi": "7 phòng chủ đề riêng tư, kín đáo tại Vinhomes Imperia, Hải Phòng.",
+    "en": "Seven private, discreet themed rooms at Vinhomes Imperia, Hai Phong."
+   },
+   "address": "MHT 14-07, Vinhomes Imperia, Hồng Bàng, Hải Phòng",
+   "phone": "0225 2899 998",
+   "image": "zen-love-station.jpg",
+   "image_url": "https://zenlovehotel.top/images/khach-san-tinh-yeu-hai-phong-phong-lan-que-phuong-anh-bia-1200x630.jpg",
+   "links": {
+    "website": "https://zenlovehotel.top/",
+    "maps": "https://maps.google.com/maps?cid=9873489321562503094",
+    "facebook": "https://www.facebook.com/108719150522594"
+   },
+   "icon": "🏨"
+  },
+  {
+   "id": "zen-halong",
+   "name": "Zen Hotel Hạ Long",
+   "tagline": {
+    "vi": "9 phòng concept riêng tư, kín đáo tại KĐT Monbay, Hạ Long.",
+    "en": "Nine private, discreet concept rooms at Monbay, Ha Long."
+   },
+   "address": "A9-06 KĐT Monbay, Hạ Long, Quảng Ninh",
+   "phone": "0203 356 1986",
+   "image": "zen-halong.jpg",
+   "image_url": "https://halong.zenlovehotel.top/images/khach-san-tinh-yeu-ha-long-kama-art-anh-bia-og-1200x630.jpg",
+   "links": {
+    "website": "https://halong.zenlovehotel.top/",
+    "maps": "https://www.google.com/maps/place/?q=place_id:ChIJUa0SZCxXSjEReKUy0-P_lJo",
+    "facebook": "https://www.facebook.com/100305381635417"
+   },
+   "icon": "🏨"
+  }
+ ]
+}

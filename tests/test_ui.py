@@ -104,9 +104,16 @@ class UiTest(unittest.TestCase):
         self.page.wait_for_selector(f"#view-{view}.active")
         self.page.wait_for_timeout(250)
 
-    def wait_job(self):
+    def wait_job(self, until=None):
+        """Wait for the background job. ``until``: a condition to wait for as well,
+        because the job may not have started yet when the progress bar is checked."""
         self.page.wait_for_selector("#jobBar.hidden", state="attached", timeout=30_000)
         self.page.wait_for_timeout(300)
+        for _ in range(300):
+            if until is None or until():
+                return
+            self.page.wait_for_timeout(100)
+        self.page.wait_for_selector("#jobBar.hidden", state="attached", timeout=30_000)
 
     def shot(self, name):
         if SHOTS:
@@ -115,7 +122,11 @@ class UiTest(unittest.TestCase):
 
     def visible_text(self):
         return self.page.evaluate("""() => {
-            const parts = [document.querySelector('.sidebar').innerText, document.querySelector('main').innerText];
+            // Proper names (the sponsors' names and addresses) are marked translate="no".
+            const text = (sel) => { const c = document.querySelector(sel).cloneNode(true);
+                c.querySelectorAll('[translate="no"]').forEach((e) => e.remove());
+                document.body.appendChild(c); const s = c.innerText; c.remove(); return s; };
+            const parts = [text('.sidebar'), text('main')];
             for (const id of ['modal', 'guide', 'toast'])
                 if (!document.getElementById(id).classList.contains('hidden')) parts.push(document.getElementById(id).innerText);
             for (const el of document.querySelectorAll('[title], [placeholder]'))
@@ -133,6 +144,11 @@ class UiTest(unittest.TestCase):
         self.assertIn("Bắt đầu", self.page.inner_text("#guideNext"))
         self.page.click("#guideNext")
         self.page.wait_for_selector("#guide.hidden", state="attached")
+        # The guide closes first and saves "seen" right after: wait for the save.
+        for _ in range(100):
+            if server._settings()["onboarded"]:
+                break
+            self.page.wait_for_timeout(100)
         self.assertTrue(server._settings()["onboarded"])
 
     def test_2_dashboard(self):
@@ -172,15 +188,22 @@ class UiTest(unittest.TestCase):
         self.page.wait_for_selector("#modal:not(.hidden)")
         self.assertIn("Khu cách ly", self.page.inner_text("#modal"))
         self.page.click("#modalOk")
-        self.wait_job()
+        self.wait_job(until=lambda: not os.path.exists(target))
         self.assertFalse(os.path.exists(target))
         self.go("quarantine")
         self.page.wait_for_selector("[data-restore]")
         self.page.click("[data-restore]")
-        self.wait_job()
+        self.wait_job(until=lambda: os.path.exists(target))
         self.assertTrue(os.path.exists(target))
 
     def test_6_screens_in_vietnamese(self):
+        self.go("home")
+        self.page.wait_for_selector("#promoCard:not(.hidden) [data-promo]")
+        self.assertIn("đồng hành", self.page.inner_text("#promoCard"))
+        self.assertIn("Đồng hành", self.page.inner_text("#navSponsor"))
+        self.go("settings")
+        self.page.wait_for_selector("#promoList [data-promo]")
+        self.assertEqual(self.page.locator("#promoList .promo-row").count(), 4)
         for v in VIEWS:
             self.go(v)
             self.shot(f"vi-{VIEWS.index(v) + 1:02d}-{v}")

@@ -102,7 +102,7 @@ const cssVar = (v) => getComputedStyle(document.documentElement).getPropertyValu
 async function renderHome() {
   const info = state.info = await api("info");
   const dash = state.dash = await api("dashboard");
-  renderDashboard(dash);
+  renderDashboard(dash); renderPromoCard();
   $("#pickFolderBtn").classList.toggle("hidden", !info.can_pick_folder);
   $("#locations").innerHTML = info.locations.map((l, i) => {
     const pct = l.total ? (l.used / l.total) * 100 : 0;
@@ -201,7 +201,7 @@ function applyAppName() {
 async function setLanguage(lang) {
   const s = await api("settings", { lang });
   state.info.settings = s;
-  await loadLang(s.lang); applyAppName();
+  await loadLang(s.lang); applyAppName(); renderSponsorLink();
   $("#toast").classList.add("hidden"); // a message still showing is in the old language
   $("#setLang").value = s.lang;
   render(state.view); refreshBadge();
@@ -210,7 +210,87 @@ function renderSettings() {
   const s = state.info.settings;
   $("#setLang").value = s.lang; $("#setTheme").value = s.theme;
   $("#aboutInfo").innerHTML = t("Phiên bản {0} · Thư mục dữ liệu: {1}", esc(state.info.version), esc(state.info.data_dir));
+  $("#macUninstall").classList.toggle("hidden", state.info.platform !== "mac");
+  renderUpdate(); renderPromoList();
 }
+
+// ---------- sponsors: shown quietly, links open only on click ----------
+const PROMO_BTN = { website: () => "🌐 " + t("Website"), maps: () => "📍 " + t("Chỉ đường"), facebook: () => "💬 " + t("Fanpage") };
+async function loadPromo() {
+  if (!state.promo) {
+    try { state.promo = await api("promo"); } catch (e) { state.promo = { places: [] }; }
+    state.promoIdx = Math.floor(Math.random() * Math.max(1, state.promo.places.length));
+  }
+  return state.promo;
+}
+const promoText = (o) => (o && (o[I18N.lang] || o.vi)) || "";
+function promoPlace(p, compact) {
+  const img = p.image ? `<img class="promo-img" src="${esc(p.image)}" alt="">`
+    : `<div class="promo-img promo-ph" aria-hidden="true">${esc(p.icon || "🏨")}</div>`;
+  const btns = p.links.map((k) => `<button class="btn ${compact ? "small " : ""}ghost" data-promo="${esc(p.id)}" data-kind="${k}">${esc(PROMO_BTN[k]())}</button>`).join("");
+  return `${img}<div class="promo-body"><h3 translate="no">${esc(p.name)}</h3><p>${esc(promoText(p.tagline))}</p>
+    <p class="muted small" translate="no">${esc(p.address)}${p.phone ? " · ☎ " + esc(p.phone) : ""}</p><div class="promo-actions">${btns}</div></div>`;
+}
+async function renderPromoCard() {
+  const d = await loadPromo(); const box = $("#promoCard");
+  if (!d.places.length) { box.classList.add("hidden"); return; }
+  const i = state.promoIdx % d.places.length;
+  const dots = d.places.map((_p, k) => `<button class="promo-dot ${k === i ? "on" : ""}" data-promo-dot="${k}" aria-label="${k + 1}"></button>`).join("");
+  box.innerHTML = `<div class="promo-kicker">${esc(t("Phần mềm miễn phí nhờ sự đồng hành của"))}</div><div class="promo-row">${promoPlace(d.places[i])}</div><div class="promo-dots">${dots}</div>`;
+  box.classList.remove("hidden");
+  box.querySelectorAll("[data-promo-dot]").forEach((b) => b.onclick = () => { state.promoIdx = +b.dataset.promoDot; renderPromoCard(); });
+}
+async function renderPromoList() {
+  const d = await loadPromo();
+  $("#promoList").innerHTML = d.places.map((p) => `<div class="card promo-row compact">${promoPlace(p, true)}</div>`).join("");
+}
+async function renderSponsorLink() {
+  const d = await loadPromo(); const a = $("#navSponsor");
+  if (!d.places.length) return;
+  a.innerHTML = esc(t("Miễn phí · Đồng hành: {0}", "\u0000")).replace("\u0000", `<span translate="no">${esc(promoText(d.sponsor))}</span>`);
+  a.classList.remove("hidden");
+  a.onclick = (e) => { e.preventDefault(); show("settings"); setTimeout(() => $("#promoList").scrollIntoView({ block: "start" }), 50); };
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-promo]"); if (!b) return;
+  api("open-link", { id: b.dataset.promo, kind: b.dataset.kind }).catch((er) => toast(er.message, { err: true }));
+});
+
+// ---------- updates: nothing is downloaded or installed without the user's click ----------
+async function renderUpdate() {
+  let u; try { u = state.update = await api("update"); } catch (e) { return; }
+  $("#updChannel").value = u.channel; $("#updAuto").checked = u.auto_check;
+  ["#updChannel", "#updAuto", "#updCheck"].forEach((s) => $(s).disabled = !u.configured);
+  $("#updGet").classList.toggle("hidden", !u.available);
+  $("#updStatus").textContent = !u.configured ? t("Chưa bật trong bản này")
+    : u.available ? t("Đã có phiên bản {0} ({1})", u.available.version, fmt(u.available.size))
+    : u.last_check ? t("Đang dùng bản mới nhất (kiểm tra lúc {0})", fmtDate(u.last_check)) : t("Chưa kiểm tra");
+}
+const saveUpdate = async (body) => { try { await api("update-settings", body); renderUpdate(); } catch (e) { toast(e.message, { err: true }); } };
+$("#updChannel").onchange = (e) => saveUpdate({ channel: e.target.value });
+$("#updAuto").onchange = (e) => saveUpdate({ auto_check: e.target.checked });
+$("#updCheck").onclick = async () => {
+  try { await api("update-check", {}); await renderUpdate(); if (!state.update.available) toast(t("Đang dùng bản mới nhất.")); }
+  catch (e) { toast(t("Không kiểm tra được bản cập nhật: {0}", e.message), { err: true }); }
+};
+$("#updGet").onclick = async () => {
+  const a = state.update.available; const notes = a.notes[I18N.lang] || a.notes.vi || "";
+  const ok = await dialog(t("Cập nhật lên phiên bản {0}", a.version),
+    (notes ? `<p>${esc(notes)}</p>` : "") + `<p>${esc(t("Ứng dụng sẽ tải bản mới ({0}), kiểm tra chữ ký rồi mới cài. Dữ liệu, nhật ký và khu cách ly được giữ nguyên.", fmt(a.size)))}</p>`,
+    t("Tải và cài"));
+  if (!ok) return;
+  try { await api("update-download", {}); pollJob(); } catch (e) { toast(e.message, { err: true }); }
+};
+async function finishUpdate(r) {
+  try {
+    const x = await api("update-install", { path: r.path });
+    if (x.drag) dialog(t("Cài bản mới"), `<p>${esc(t("Kéo {0} vào thư mục Applications để thay bản cũ, rồi mở lại ứng dụng.", state.info.app_name))}</p>`, t("Đã hiểu"), null);
+    else toast(t("Đang cài bản mới. Ứng dụng sẽ tự mở lại."));
+  } catch (e) { toast(e.message, { err: true }); }
+}
+$("#beforeUninstall").onclick = async () => {
+  try { const r = await api("before-uninstall", {}); toast(r.message); } catch (e) { toast(e.message, { err: true }); }
+};
 $("#setLang").onchange = (e) => setLanguage(e.target.value).catch((er) => toast(er.message, { err: true }));
 $("#setTheme").onchange = async (e) => {
   try { state.info.settings = await api("settings", { theme: e.target.value }); applyTheme(state.info.settings.theme); if (state.view === "home") renderHome(); }
@@ -278,7 +358,12 @@ function pollJob() {
     if (busy) {
       bar.classList.remove("hidden");
       const p = j.progress || {}; const el = dur(Date.now() / 1000 - j.started);
-      if (j.kind === "scan") {
+      if (j.kind === "update") {
+        const pct = p.total ? Math.floor(100 * p.done / p.total) : 0;
+        $("#jobTitle").textContent = `${t("Đang tải bản cập nhật")} (${pct}%)`;
+        $("#jobDetail").textContent = `${el} · ${fmt(p.done || 0)} / ${fmt(p.total || 0)}`;
+        $(".progress").classList.remove("indeterminate"); $("#jobProgress").style.width = pct + "%";
+      } else if (j.kind === "scan") {
         $("#jobTitle").textContent = t("Đang quét {0} — đã tìm thấy {1} {1|file|files} ({2})", j.root, num(p.files), fmt(p.bytes || 0));
         $("#jobDetail").textContent = `${el} · ${p.current || ""}`;
         $(".progress").classList.add("indeterminate"); $("#jobProgress").style.width = "30%";
@@ -306,6 +391,7 @@ function pollJob() {
     else if (j.state === "done" && j.kind === "duplicates") { toast(j.result ? t("Tìm thấy {0} {0|nhóm|nhóm} file trùng.", j.result) : t("Không có file trùng nào. Máy anh/chị khá gọn!")); if (state.view === "dups") renderDups(); }
     else if (j.state === "done" && j.kind === "similar") { toast(j.result ? t("Tìm thấy {0} {0|nhóm|nhóm} ảnh giống nhau.", j.result) : t("Không có ảnh nào giống nhau.")); if (state.view === "similar") renderSimilar(); }
     else if (j.state === "done" && j.kind === "junk") { state.junk = j.result; renderJunk(); }
+    else if (j.state === "done" && j.kind === "update") finishUpdate(j.result);
     else if (j.state === "cancelled") toast(t("Đã dừng lại."));
     else if (j.state === "error") toast(t("Có lỗi: {0}", j.error), { err: true });
   };
@@ -742,7 +828,8 @@ window.addEventListener("resize", () => { if (state.view === "usage") renderUsag
     applyTheme(state.info.settings.theme);
     await loadLang(state.info.settings.lang);
   } catch (e) { await loadLang("vi"); toast(e.message, { err: true }); }
-  applyAppName();
+  applyAppName(); renderSponsorLink();
   await loadScans().catch((e) => toast(e.message, { err: true })); refreshBadge(); render("home"); pollJob();
   if (state.info && !state.info.settings.onboarded) openGuide();
+  else api("update").then((u) => { if (u.available) toast(t("Đã có phiên bản mới {0}.", u.available.version), { action: t("Xem"), onAction: () => show("settings") }); }).catch(() => {});
 })();

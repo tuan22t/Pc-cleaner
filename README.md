@@ -57,8 +57,13 @@ python -m unittest discover -s tests -v
 
 - [x] Giai đoạn 1: quét ổ đĩa, báo cáo dung lượng, file lớn, giao diện
 - [x] Giai đoạn 2: tìm file trùng lặp chính xác
-- [ ] Ảnh gần giống nhau (perceptual hash)
-- [ ] Rác hệ thống: Temp, bản cập nhật cũ, crash dump, thumbnail cache (Windows); `~/Library/Caches`, logs (macOS)
-- [ ] Chương trình khởi động/chạy nền: chỉ tắt, không gỡ, bật lại 1 chạm; tạo điểm khôi phục trước (Windows)
-- [ ] Gợi ý sắp xếp thư mục, xem trước trước khi di chuyển
-- [ ] Dọn dẹp theo lịch
+- [x] Ảnh gần giống nhau (perceptual hash)
+- [x] Rác hệ thống: Temp, bản cập nhật cũ, crash dump, thumbnail cache (Windows); `~/Library/Caches`, logs (macOS)
+- [x] Chương trình khởi động/chạy nền: chỉ tắt, không gỡ, bật lại 1 chạm; tạo điểm khôi phục trước (Windows)
+- [x] Gợi ý sắp xếp thư mục, xem trước trước khi di chuyển
+- [x] Dọn dẹp theo lịch
+- [x] Giai đoạn A: an toàn dữ liệu (0.3.0)
+- [x] Giai đoạn B: kiến trúc và kiểm thử (0.4.0)
+- [x] Giai đoạn C: giao diện, tiếng Anh, chế độ tối (0.5.0)
+- [ ] Giai đoạn D: bộ cài, ký số, tự cập nhật, khu đồng hành (0.6.0, đang làm)
+- [ ] Giai đoạn F: nhiều thiết bị

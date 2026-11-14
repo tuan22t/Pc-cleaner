@@ -3,6 +3,7 @@ name: build
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -41,31 +42,219 @@ jobs:
           echo "--- this system's own module:"
           python -m coverage report --include="pccleaner/platforms/*.py"
       - name: Rescan of 100,000 files must be 3x faster than the first scan
-        run: python tools/bench_scan.py 100000 3
+        run: python tools/bench_scan.py 100000 3 5
 
-  package:
+  # Checks the release secrets are in place, without printing them (not on pull requests from forks).
+  release-setup:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+      RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: The signing secret must match the key built into the app
+        run: |
+          python - <<'PY'
+          import os, sys
+          from pccleaner import ed25519, updater
+          k = os.environ.get("UPDATE_SIGNING_KEY", "").strip().lower()
+          hexok = len(k) == 64 and all(c in "0123456789abcdef" for c in k)
+          ok = hexok and ed25519.public_key(bytes.fromhex(k)).hex() == updater.UPDATE_PUBLIC_KEY
+          if ok:
+              print("UPDATE_SIGNING_KEY matches the app's public key")
+          elif k == updater.UPDATE_PUBLIC_KEY:
+              print("UPDATE_SIGNING_KEY holds the PUBLIC key; it must hold the private one")
+          else:
+              print(f"UPDATE_SIGNING_KEY does not match: {len(k)} characters, 64 hex digits expected, hex={hexok}")
+          sys.exit(0 if ok else 1)
+          PY
+      - name: The releases token is set
+        run: '[ -n "$RELEASES_TOKEN" ] && echo "RELEASES_TOKEN is set" || { echo "RELEASES_TOKEN is missing"; exit 1; }'
+
+  # The version comes from pccleaner/__init__.py, so the packages always match the app.
+  windows-installer:
+    # Packaging and install checks cost most of the CI minutes (macOS counts 10x):
+    # run them for main, release tags and a manual run, not on every PR push.
+    if: github.event_name != 'pull_request'
     needs: test
+    runs-on: windows-2022
+    env:
+      WIN_SIGN_COMMAND: ${{ secrets.WIN_SIGN_COMMAND }}
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - id: v
+        shell: bash
+        run: echo "version=$(python -c 'import pccleaner; print(pccleaner.__version__)')" >> "$GITHUB_OUTPUT"
+      - name: Build the app and the installer (signed when the certificate is set up)
+        run: powershell -File packaging\windows\build.ps1 -Version ${{ steps.v.outputs.version }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PCCleaner-Setup-${{ steps.v.outputs.version }}
+          path: dist/PCCleaner-Setup-*.exe
+
+  windows-installer-check:
+    # Install, update and uninstall for real, on throw-away machines only.
+    needs: windows-installer
     strategy:
+      fail-fast: false
       matrix:
-        include:
-          - os: windows-latest
-            artifact: PCCleaner-windows
-          - os: macos-latest
-            artifact: PCCleaner-macos
+        os: [windows-2022, windows-2025]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements-build.txt
-      - name: Build app
-        shell: bash
+      - uses: actions/download-artifact@v4
+        with:
+          name: PCCleaner-Setup-${{ needs.windows-installer.outputs.version }}
+          path: dist
+      - run: python tools/installer_e2e.py windows dist/PCCleaner-Setup-${{ needs.windows-installer.outputs.version }}.exe
+      - name: Is the installer signed?
+        shell: pwsh
+        run: Get-AuthenticodeSignature dist\PCCleaner-Setup-*.exe | Format-List Status, StatusMessage, SignerCertificate
+
+  mac-dmg:
+    # Packaging and install checks cost most of the CI minutes (macOS counts 10x):
+    # run them for main, release tags and a manual run, not on every PR push.
+    if: github.event_name != 'pull_request'
+    needs: test
+    # The build makes a universal2 app on either chip; the Intel pool is the one
+    # GitHub has had free most often (arm64 runners were not handed out on 2026-11-13).
+    runs-on: macos-15-intel
+    env:
+      MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+      MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+      MAC_SIGN_IDENTITY: ${{ secrets.MAC_SIGN_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python from python.org (universal2, runs on Intel and Apple chips)
         run: |
-          SEP=":"; [ "$RUNNER_OS" = "Windows" ] && SEP=";"
-          pyinstaller --noconfirm --windowed --name PCCleaner \
-            --add-data "pccleaner/web${SEP}pccleaner/web" run.py
+          curl -fsSL -o /tmp/python.pkg https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg
+          sudo installer -pkg /tmp/python.pkg -target /
+      - id: v
+        run: echo "version=$(python3 -c 'import pccleaner; print(pccleaner.__version__)')" >> "$GITHUB_OUTPUT"
+      - name: Put the Developer ID certificate in a temporary keychain
+        if: env.MAC_CERT_P12 != ''
+        run: |
+          echo "$MAC_CERT_P12" | base64 --decode > /tmp/cert.p12
+          KC=/tmp/build.keychain; PW="$(uuidgen)"
+          security create-keychain -p "$PW" "$KC"
+          security set-keychain-settings -lut 3600 "$KC"
+          security unlock-keychain -p "$PW" "$KC"
+          security import /tmp/cert.p12 -k "$KC" -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$PW" "$KC"
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          rm /tmp/cert.p12
+      - name: Build the universal app and the DMG (signed and notarized when the account is set up)
+        run: bash packaging/macos/build.sh ${{ steps.v.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/
+          name: PCCleaner-${{ steps.v.outputs.version }}-mac
+          path: dist/PCCleaner-*.dmg
+
+  mac-dmg-check:
+    # The same DMG on an Intel Mac and an Apple-chip Mac.
+    needs: mac-dmg
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15-intel, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: PCCleaner-${{ needs.mac-dmg.outputs.version }}-mac
+          path: dist
+      - run: python tools/installer_e2e.py mac dist/PCCleaner-${{ needs.mac-dmg.outputs.version }}.dmg
+      - name: What Gatekeeper says (accepted only once signed and notarized)
+        run: spctl --assess --type open --context context:primary-signature -v dist/*.dmg || true
+
+  # A tag such as v0.6.1 (or v0.7.0-beta.1) publishes the checked packages and the
+  # signed update announcement to the public releases repository (docs/phat-hanh.md).
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows-installer, windows-installer-check, mac-dmg, mac-dmg-check]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+      UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+      REPO: tuan22t/pc-cleaner-releases
+      # "false": publish the Windows installer only (the Mac app is not yet signed by Apple;
+      # its DMG stays as a build artifact for the publisher's own Macs). See docs/phat-hanh.md.
+      PUBLISH_MAC: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: The signing secret must match the key built into the app
+        run: |
+          python - <<'PY'
+          import os, sys
+          from pccleaner import ed25519, updater
+          k = os.environ.get("UPDATE_SIGNING_KEY", "").strip().lower()
+          hexok = len(k) == 64 and all(c in "0123456789abcdef" for c in k)
+          ok = hexok and ed25519.public_key(bytes.fromhex(k)).hex() == updater.UPDATE_PUBLIC_KEY
+          if ok:
+              print("UPDATE_SIGNING_KEY matches the app's public key")
+          elif k == updater.UPDATE_PUBLIC_KEY:
+              print("UPDATE_SIGNING_KEY holds the PUBLIC key; it must hold the private one")
+          else:
+              print(f"UPDATE_SIGNING_KEY does not match: {len(k)} characters, 64 hex digits expected, hex={hexok}")
+          sys.exit(0 if ok else 1)
+          PY
+      - name: The tag must match the app's version
+        run: |
+          V="$(python -c 'import pccleaner; print(pccleaner.__version__)')"
+          [ "${GITHUB_REF_NAME}" = "v$V" ] || { echo "tag ${GITHUB_REF_NAME} but the app says $V"; exit 1; }
+          grep -q "^## $V" CHANGELOG.md || { echo "CHANGELOG.md has no section for $V"; exit 1; }
+          echo "V=$V" >> "$GITHUB_ENV"
+          case "$V" in *-beta.*) echo "CHANNEL=beta" >> "$GITHUB_ENV";; *) echo "CHANNEL=stable" >> "$GITHUB_ENV";; esac
+      - uses: actions/download-artifact@v4
+        with:
+          name: PCCleaner-Setup-${{ env.V }}
+          path: dist
+      - uses: actions/download-artifact@v4
+        if: env.PUBLISH_MAC == 'true'
+        with:
+          name: PCCleaner-${{ env.V }}-mac
+          path: dist
+      - name: Publish the packages
+        run: |
+          awk -v v="## $V" 'index($0,v)==1{f=1;next} /^## /{f=0} f' CHANGELOG.md > notes.md
+          pre=""; [ "$CHANNEL" = beta ] && pre="--prerelease"
+          files="dist/PCCleaner-Setup-$V.exe"; [ "$PUBLISH_MAC" = true ] && files="$files dist/PCCleaner-$V.dmg"
+          gh release create "v$V" $files \
+            --repo "$REPO" --title "PC Cleaner $V" --notes-file notes.md $pre
+      - name: Sign and publish the update announcement
+        run: |
+          BASE="https://github.com/$REPO/releases/download/v$V"
+          channels="$CHANNEL"; [ "$CHANNEL" = stable ] && channels="stable beta"
+          mac=(); [ "$PUBLISH_MAC" = true ] && mac=(--mac "dist/PCCleaner-$V.dmg")
+          for c in $channels; do
+            python tools/sign_update.py --channel "$c" --version "$V" \
+              --windows "dist/PCCleaner-Setup-$V.exe" "${mac[@]}" \
+              --base-url "$BASE" --notes-vi "$(cat notes.md)" -o "dist/$c.json"
+          done
+          gh release view updates --repo "$REPO" >/dev/null 2>&1 || \
+            gh release create updates --repo "$REPO" --title "Update announcements" --notes "Read by the app. Do not delete." --latest=false
+          for c in $channels; do gh release upload updates "dist/$c.json" --repo "$REPO" --clobber; done

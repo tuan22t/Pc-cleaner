@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .platforms.common import background_thread
-from . import APP_NAME, __version__, dashboard, db, duplicates, i18n, junk, organizer, paths, quarantine, scanner, scheduler, similar, startup
+from . import APP_NAME, __version__, dashboard, db, duplicates, i18n, junk, organizer, paths, quarantine, scanner, scheduler, similar, startup, updater, promo
 from .i18n import _
 
 WEB_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).parent.parent)) / "pccleaner" / "web"
@@ -57,7 +57,9 @@ class JobManager:
     def busy(self) -> bool:
         return self.thread is not None and self.thread.is_alive()
 
-    def start(self, kind: str, fn, **meta) -> None:
+    def start(self, kind: str, fn, after=None, **meta) -> None:
+        """Run ``fn`` in the background. ``after`` (housekeeping) runs once the
+        result is already shown, in the same thread, so no other job starts meanwhile."""
         with self.lock:
             if self.busy():
                 raise RuntimeError(_("Đang có một tác vụ khác chạy"))
@@ -69,6 +71,11 @@ class JobManager:
                 try:
                     result = fn(self.cancel, self._update)
                     self.state.update(state="done", result=result, finished=time.time())
+                    if after is not None:
+                        try:
+                            after()
+                        except Exception:  # noqa: BLE001  - housekeeping never fails the job
+                            _log_exc()
                 except (scanner.Cancelled, InterruptedError):
                     self.state.update(state="cancelled", finished=time.time())
                 except Exception as e:  # noqa: BLE001
@@ -274,7 +281,8 @@ def route(method: str, path: str, q: dict, body: dict):
             raise FileNotFoundError(_("Thư mục không tồn tại: {0}", root))
         progress = scanner.ScanProgress()
         full = bool(body.get("full"))
-        jobs.start("scan", lambda c, u: scanner.scan(root, progress, c, u, incremental=not full), root=root)
+        jobs.start("scan", lambda c, u: scanner.scan(root, progress, c, u, incremental=not full, prune=False),
+                   after=lambda: scanner.prune_scans(root), root=root)
         return {"ok": True}
     if key == ("GET", "scans"):
         return scanner.latest_scans()
@@ -388,6 +396,28 @@ def route(method: str, path: str, q: dict, body: dict):
     if key == ("POST", "purge"):
         bid = str(body["batch_id"])
         return jobs.action(_("Đang xóa vĩnh viễn"), lambda c, p, u: quarantine.purge_batch(bid, c, p, u))
+    if key == ("GET", "promo"):
+        return promo.places()
+    if key == ("POST", "open-link"):
+        return promo.open_link(str(body.get("id", "")), str(body.get("kind", "")))
+    if key == ("GET", "update"):
+        return updater.status()
+    if key == ("POST", "update-settings"):
+        return updater.save_settings(body)
+    if key == ("POST", "update-check"):
+        return updater.check()
+    if key == ("POST", "update-download"):
+        jobs.start("update", lambda c, u: updater.download(c, u))
+        return {"ok": True}
+    if key == ("POST", "update-install"):
+        r = updater.install(str(body["path"]))
+        if r.get("quit"):
+            # Leave the installer free to replace the program files.
+            threading.Timer(1.5, lambda: os._exit(0)).start()
+        return r
+    if key == ("POST", "before-uninstall"):
+        scheduler.remove_for_uninstall()
+        return {"message": _("Đã gỡ lịch dọn tự động. Dữ liệu và khu cách ly vẫn ở {0}", paths.data_dir())}
     if key == ("POST", "reveal"):
         _reveal(str(body["path"]))
         return {"ok": True}
