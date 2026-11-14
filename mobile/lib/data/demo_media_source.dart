@@ -9,7 +9,7 @@ import 'package:image/image.dart' as img;
 
 import '../core/analysis.dart' show thumbSide;
 import '../core/models.dart';
-import 'android_media_source.dart' show GreySource, GreyThumb;
+import 'native_media_source.dart' show GreySource, GreyThumb;
 import 'media_source.dart';
 
 class _Spec {
@@ -23,12 +23,24 @@ class _Spec {
 }
 
 class DemoMediaSource implements MediaSource, GreySource {
-  DemoMediaSource({this.permission = PermissionState.granted, DateTime? now})
+  DemoMediaSource({this.permission = PermissionState.granted, DateTime? now, this.platform = 'demo'})
       : now = now ?? DateTime(2026, 11, 14, 9) {
     _build();
   }
 
   PermissionState permission;
+
+  /// 'ios' makes the demo behave like an iPhone (no restore from the app).
+  @override
+  final String platform;
+
+  @override
+  bool get canRestoreInApp => platform != 'ios';
+
+  int openTrashCalls = 0;
+
+  @override
+  Future<void> openTrash() async => openTrashCalls++;
   final DateTime now;
   final List<MediaItem> _items = [];
   final Map<String, _Spec> _spec = {};
@@ -249,6 +261,7 @@ class DemoMediaSource implements MediaSource, GreySource {
 
   @override
   Future<bool> restore(List<TrashedItem> items) async {
+    if (!canRestoreInApp) return false;
     for (final t in items) {
       _trashed.remove(t.id);
     }

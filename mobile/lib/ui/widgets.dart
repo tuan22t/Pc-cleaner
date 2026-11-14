@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import '../core/models.dart';
 import '../data/media_source.dart';
 import '../i18n.dart';
+import '../main.dart' show AppScope;
 
 /// Small in-memory cache so scrolling back does not ask Android again.
 class ThumbCache {
@@ -149,7 +150,10 @@ class CleanBar extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Text(tr('Thùng rác giữ 30 ngày, khôi phục được trong mục Nhật ký.'),
+          Text(
+              AppScope.of(context).isIOS
+                  ? tr('Ảnh vào "Đã xóa gần đây" 30 ngày, khôi phục được trong ứng dụng Ảnh.')
+                  : tr('Thùng rác giữ 30 ngày, khôi phục được trong mục Nhật ký.'),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
         ]),
       ),

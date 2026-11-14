@@ -5,7 +5,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'core/action_log.dart';
 import 'core/scanner.dart';
-import 'data/android_media_source.dart';
+import 'data/native_media_source.dart';
 import 'data/demo_media_source.dart';
 import 'data/media_source.dart';
 import 'i18n.dart';
@@ -24,10 +24,10 @@ Future<void> main() async {
   final dir = await getApplicationSupportDirectory();
   MediaSource source;
   PermissionState? perm;
-  if (demoMode || !Platform.isAndroid) {
+  if (demoMode || !(Platform.isAndroid || Platform.isIOS)) {
     source = DemoMediaSource();
   } else {
-    final a = AndroidMediaSource();
+    final a = NativeMediaSource(platform: Platform.isIOS ? 'ios' : 'android');
     source = a;
     try {
       perm = await a.permissionState();

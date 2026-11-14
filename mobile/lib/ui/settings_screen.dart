@@ -95,11 +95,11 @@ class SettingsScreen extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.shield_outlined),
               title: Text(tr('Không gì bị xóa ngay')),
-              subtitle: Text(tr('Mục đã chọn được chuyển vào Thùng rác của điện thoại và giữ 30 ngày. Android luôn hỏi bạn xác nhận trước.')),
+              subtitle: Text(tr('Mục đã chọn được chuyển vào Thùng rác của điện thoại và giữ 30 ngày. Điện thoại luôn hỏi bạn xác nhận trước.')),
             ),
             ListTile(
               leading: const Icon(Icons.wifi_off),
-              title: Text(tr('Không có quyền Internet')),
+              title: Text(s.isIOS ? tr('Không kết nối Internet') : tr('Không có quyền Internet')),
               subtitle: Text(tr('Ảnh, video và kết quả phân tích chỉ nằm trên điện thoại của bạn. Ứng dụng không thu thập dữ liệu nào.')),
             ),
           ]),

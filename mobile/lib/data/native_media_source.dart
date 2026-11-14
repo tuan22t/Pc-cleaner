@@ -1,4 +1,6 @@
-/// MediaStore access through the Kotlin bridge in MainActivity.kt.
+/// Photo library access through the native bridges: MediaStore on Android
+/// (MainActivity.kt) and PhotoKit on iPhone (AppDelegate.swift). Both answer
+/// the same channel methods.
 library;
 
 import 'package:flutter/services.dart';
@@ -18,8 +20,24 @@ abstract class GreySource {
   Future<GreyThumb?> grey(MediaItem item, int side);
 }
 
-class AndroidMediaSource implements MediaSource, GreySource {
+class NativeMediaSource implements MediaSource, GreySource {
+  NativeMediaSource({required this.platform});
   static const _ch = MethodChannel('pccleaner/media');
+
+  @override
+  final String platform;
+
+  @override
+  bool get canRestoreInApp => platform == 'android';
+
+  @override
+  Future<void> openTrash() async {
+    try {
+      await _ch.invokeMethod('openTrash');
+    } on MissingPluginException {
+      // Android restores in the app itself.
+    }
+  }
 
   Map<String, String> _ref(MediaItem i) => {'id': i.id, 'kind': i.kind.name};
 
@@ -55,7 +73,7 @@ class AndroidMediaSource implements MediaSource, GreySource {
         created: DateTime.fromMillisecondsSinceEpoch((r['created'] as num?)?.toInt() ?? 0),
         modified: DateTime.fromMillisecondsSinceEpoch((r['modified'] as num?)?.toInt() ?? 0),
         isFavorite: r['favorite'] == true,
-        isScreenshot: kind == MediaKind.image && isScreenshotPath(path, title),
+        isScreenshot: kind == MediaKind.image && (r['screenshot'] == true || isScreenshotPath(path, title)),
         durationSec: ((r['duration'] as num?)?.toInt() ?? 0) ~/ 1000,
         title: title,
         bucket: r['bucket'] as String? ?? '',

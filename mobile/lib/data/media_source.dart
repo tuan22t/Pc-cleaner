@@ -22,6 +22,17 @@ class TrashedItem {
 }
 
 abstract class MediaSource {
+  /// 'android', 'ios' or 'demo'.
+  String get platform;
+
+  /// Android can take items back out of its trash; iOS cannot (the user
+  /// restores from Photos > Recently Deleted).
+  bool get canRestoreInApp;
+
+  /// Opens the place where trashed items can be restored by hand
+  /// (iOS: the Photos app).
+  Future<void> openTrash();
+
   Future<PermissionState> requestPermission();
 
   /// Opens the system settings page of this app (after a refusal).

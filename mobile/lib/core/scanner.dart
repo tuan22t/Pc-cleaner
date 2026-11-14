@@ -7,7 +7,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
-import '../data/android_media_source.dart' show GreySource, GreyThumb;
+import '../data/native_media_source.dart' show GreySource, GreyThumb;
 import '../data/media_source.dart';
 import 'analysis.dart';
 import 'grouping.dart';

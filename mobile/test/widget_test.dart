@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:pc_cleaner/data/demo_media_source.dart';
 import 'package:pc_cleaner/data/media_source.dart';
 import 'package:pc_cleaner/ui/widgets.dart';
 
@@ -57,6 +58,27 @@ void main() {
     await tester.tap(find.text('Khôi phục'));
     await settle(tester);
     expect(find.text('Đã khôi phục'), findsOneWidget);
+  });
+
+  testWidgets('iPhone: cleaned photos are restored in the Photos app', (tester) async {
+    final s = await makeState(tester, platform: 'ios');
+    await pumpApp(tester, s);
+    await runScan(tester, s);
+    await tester.tap(find.text('Ảnh giống nhau'));
+    await settle(tester);
+    expect(find.textContaining('Đã xóa gần đây'), findsWidgets);
+    await tester.tap(find.textContaining('vào thùng rác').first);
+    await settle(tester);
+    expect(s.log.entries, hasLength(1));
+
+    await tester.tap(find.text('Nhật ký'));
+    await settle(tester);
+    expect(find.text('Khôi phục'), findsNothing);
+    expect(find.textContaining('còn khoảng'), findsWidgets);
+    final src = s.source as DemoMediaSource;
+    await tester.tap(find.text('Mở ứng dụng Ảnh'));
+    await settle(tester);
+    expect(src.openTrashCalls, 1);
   });
 
   testWidgets('swipe deck: left removes, undo puts it back', (tester) async {

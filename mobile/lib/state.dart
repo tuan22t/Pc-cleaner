@@ -75,6 +75,10 @@ class AppState extends ChangeNotifier {
 
   bool get scanning => _scanner != null;
 
+  /// iPhone: no Internet permission concept, and restoring happens in the
+  /// Photos app rather than in PC Cleaner.
+  bool get isIOS => source.platform == 'ios';
+
   Future<void> init({PermissionState? knownPermission}) async {
     final f = settingsFile;
     if (f != null && await f.exists()) {
@@ -171,8 +175,18 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// What is still recoverable for a journal entry.
-  Future<List<TrashedItem>> recoverable(LogEntry e) => source.stillTrashed(e.ids, e.kinds);
+  /// What is still recoverable for a journal entry. When the system does not
+  /// say when an item expires (iOS), it is 30 days after the cleanup.
+  Future<List<TrashedItem>> recoverable(LogEntry e) async {
+    final fallback = e.at.add(const Duration(days: 30));
+    final now = DateTime.now();
+    final left = await source.stillTrashed(e.ids, e.kinds);
+    return [
+      for (final t in left)
+        if ((t.expires ?? fallback).isAfter(now))
+          TrashedItem(id: t.id, kind: t.kind, expires: t.expires ?? fallback),
+    ];
+  }
 
   Future<bool> restore(LogEntry e) async {
     final items = await recoverable(e);

@@ -48,7 +48,10 @@ class HistoryScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          Text(tr('Mục đã dọn nằm trong Thùng rác của điện thoại 30 ngày. Trong thời gian đó bạn khôi phục được bằng nút bên dưới, hoặc trong Thùng rác của ứng dụng Ảnh / Files.'),
+          Text(
+              s.isIOS
+                  ? tr('Mục đã dọn nằm trong album "Đã xóa gần đây" 30 ngày. Muốn lấy lại: mở ứng dụng Ảnh, vào Bộ sưu tập > Đã xóa gần đây, chọn ảnh và bấm Khôi phục.')
+                  : tr('Mục đã dọn nằm trong Thùng rác của điện thoại 30 ngày. Trong thời gian đó bạn khôi phục được bằng nút bên dưới, hoặc trong Thùng rác của ứng dụng Ảnh / Files.'),
               style: t.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
           const SizedBox(height: 10),
           if (entries.isEmpty)
@@ -98,7 +101,9 @@ class _EntryCardState extends State<_EntryCard> {
             } else {
               final exp = left.map((x) => x.expires).whereType<DateTime>().fold<DateTime?>(null, (a, b) => a == null || b.isBefore(a) ? b : a);
               final days = exp == null ? 30 : exp.difference(DateTime.now()).inDays.clamp(0, 30);
-              status = tr('Trong thùng rác · còn {0} ngày để khôi phục', [days]);
+              status = s.isIOS
+                  ? tr('Trong "Đã xóa gần đây" · còn khoảng {0} ngày', [days])
+                  : tr('Trong thùng rác · còn {0} ngày để khôi phục', [days]);
             }
             return Row(children: [
               Expanded(
@@ -109,7 +114,9 @@ class _EntryCardState extends State<_EntryCard> {
                   Text(status, style: t.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 ]),
               ),
-              if (!e.restored && left != null && left.isNotEmpty)
+              if (!e.restored && left != null && left.isNotEmpty && !s.source.canRestoreInApp)
+                OutlinedButton(onPressed: s.source.openTrash, child: Text(tr('Mở ứng dụng Ảnh'))),
+              if (!e.restored && left != null && left.isNotEmpty && s.source.canRestoreInApp)
                 OutlinedButton(
                   onPressed: _working
                       ? null

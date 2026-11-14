@@ -11,12 +11,12 @@ import 'package:pc_cleaner/main.dart';
 import 'package:pc_cleaner/state.dart';
 import 'package:pc_cleaner/ui/widgets.dart' show ThumbCache;
 
-Future<AppState> makeState(WidgetTester tester, {PermissionState perm = PermissionState.granted, String lang = 'vi', AppTheme theme = AppTheme.light}) async {
+Future<AppState> makeState(WidgetTester tester, {PermissionState perm = PermissionState.granted, String lang = 'vi', AppTheme theme = AppTheme.light, String platform = 'demo'}) async {
   late AppState s;
   ThumbCache.clear();
   await tester.runAsync(() async {
     await loadTranslations();
-    final src = DemoMediaSource(permission: perm);
+    final src = DemoMediaSource(permission: perm, platform: platform);
     s = AppState(source: src, log: ActionLog(null), cache: AnalysisCache(null));
     await s.init(knownPermission: perm);
     s.settings

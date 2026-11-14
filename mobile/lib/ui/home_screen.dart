@@ -192,7 +192,7 @@ class _LimitedBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialBanner(
       padding: const EdgeInsets.all(12),
-      content: Text(tr('Bạn mới cho phép một số ảnh. Để tìm ảnh trùng trong cả thư viện, hãy chọn "Cho phép tất cả".')),
+      content: Text(tr('Bạn mới cho phép một số ảnh. Để tìm ảnh trùng trong cả thư viện, hãy cho phép truy cập toàn bộ ảnh trong Cài đặt.')),
       actions: [TextButton(onPressed: state.source.openSettings, child: Text(tr('Mở cài đặt')))],
     );
   }
@@ -431,12 +431,15 @@ class _PrivacyNote extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final ios = AppScope.of(context).isIOS;
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Icon(Icons.lock_outline, size: 16, color: cs.onSurfaceVariant),
       const SizedBox(width: 6),
       Expanded(
         child: Text(
-          tr('Mọi phân tích diễn ra ngay trên điện thoại. Ứng dụng không có quyền truy cập Internet nên không thể gửi ảnh hay dữ liệu của bạn đi đâu.'),
+          ios
+              ? tr('Mọi phân tích diễn ra ngay trên điện thoại. Ứng dụng không kết nối Internet nên không gửi ảnh hay dữ liệu của bạn đi đâu.')
+              : tr('Mọi phân tích diễn ra ngay trên điện thoại. Ứng dụng không có quyền truy cập Internet nên không thể gửi ảnh hay dữ liệu của bạn đi đâu.'),
           style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
         ),
       ),
