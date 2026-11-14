@@ -15,6 +15,11 @@
    - đưa hai tệp lên kho phát hành công khai;
    - ký thông báo cập nhật.
 
+   Hiện chỉ phát hành bản Windows (`PUBLISH_MAC: "false"` trong `build.yml`), vì bản
+   Mac chưa có chữ ký của Apple. Tệp DMG vẫn được đóng gói và cài thử; tải nó ở mục
+   Artifacts của lần chạy GitHub Actions để dùng trên máy riêng. Khi có tài khoản Apple
+   Developer thì đổi thành `"true"`.
+
    Nếu một bước hỏng thì không có gì được phát hành. Bản beta chỉ đến người chọn
    kênh Thử nghiệm. Bản ổn định đến cả hai kênh.
 

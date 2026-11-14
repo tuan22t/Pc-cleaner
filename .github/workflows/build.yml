@@ -198,6 +198,9 @@ jobs:
       GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
       UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
       REPO: tuan22t/pc-cleaner-releases
+      # "false": publish the Windows installer only (the Mac app is not yet signed by Apple;
+      # its DMG stays as a build artifact for the publisher's own Macs). See docs/phat-hanh.md.
+      PUBLISH_MAC: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -231,6 +234,7 @@ jobs:
           name: PCCleaner-Setup-${{ env.V }}
           path: dist
       - uses: actions/download-artifact@v4
+        if: env.PUBLISH_MAC == 'true'
         with:
           name: PCCleaner-${{ env.V }}-mac
           path: dist
@@ -238,15 +242,17 @@ jobs:
         run: |
           awk -v v="## $V" 'index($0,v)==1{f=1;next} /^## /{f=0} f' CHANGELOG.md > notes.md
           pre=""; [ "$CHANNEL" = beta ] && pre="--prerelease"
-          gh release create "v$V" dist/PCCleaner-Setup-$V.exe dist/PCCleaner-$V.dmg \
+          files="dist/PCCleaner-Setup-$V.exe"; [ "$PUBLISH_MAC" = true ] && files="$files dist/PCCleaner-$V.dmg"
+          gh release create "v$V" $files \
             --repo "$REPO" --title "PC Cleaner $V" --notes-file notes.md $pre
       - name: Sign and publish the update announcement
         run: |
           BASE="https://github.com/$REPO/releases/download/v$V"
           channels="$CHANNEL"; [ "$CHANNEL" = stable ] && channels="stable beta"
+          mac=(); [ "$PUBLISH_MAC" = true ] && mac=(--mac "dist/PCCleaner-$V.dmg")
           for c in $channels; do
             python tools/sign_update.py --channel "$c" --version "$V" \
-              --windows "dist/PCCleaner-Setup-$V.exe" --mac "dist/PCCleaner-$V.dmg" \
+              --windows "dist/PCCleaner-Setup-$V.exe" "${mac[@]}" \
               --base-url "$BASE" --notes-vi "$(cat notes.md)" -o "dist/$c.json"
           done
           gh release view updates --repo "$REPO" >/dev/null 2>&1 || \
