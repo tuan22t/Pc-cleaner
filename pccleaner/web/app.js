@@ -205,6 +205,7 @@ async function setLanguage(lang) {
   await loadLang(s.lang); applyAppName();
   $("#toast").classList.add("hidden"); // a message still showing is in the old language
   $("#setLang").value = s.lang;
+  state.speed = null; // its advice comes from the back end in the old language
   render(state.view); refreshBadge();
 }
 function renderSettings() {
@@ -675,7 +676,7 @@ function meter(v, mid, high) { return v == null ? "" : `<div class="meter ${v >=
 async function renderSpeed(again = true) {
   if (!state.speed) {
     $("#speedApps").innerHTML = `<div class="empty"><div class="spinner inline"></div> ${t("Đang kiểm tra máy…")}</div>`;
-    $("#speedTweaks").innerHTML = "";
+    $("#speedTweaks").innerHTML = $("#speedTiles").innerHTML = $("#speedAdvice").innerHTML = "";
   }
   try { state.speed = await api("speed"); } catch (e) { $("#speedApps").innerHTML = `<div class="empty">${t("Không đọc được: {0}", esc(e.message))}</div>`; return; }
   drawSpeed();
