@@ -187,14 +187,13 @@ class UiTest(unittest.TestCase):
 
     def test_6b_speed_up(self):
         """The Speed up screen only reads: nothing is closed, cleaned or changed here."""
-        dashboard.remember("last_startup", {"total": 9, "enabled": 7, "can_disable": 4})  # the Startup screen replaced it
         self.go("speed")
         self.page.wait_for_selector("#speedTiles .tile-stat")
         self.assertEqual(self.page.locator("#speedTiles .tile-stat").count(), 4)
         self.page.wait_for_selector("#speedApps .row:not(.head)")
         self.assertGreater(self.page.locator("#speedAdvice .tip").count(), 0)
-        # (the exact number can differ: the Startup screen may still be reading the real list)
-        self.assertIn("chương trình khởi động cùng máy", self.page.inner_text("#speedAdvice"))
+        # Which tips appear depends on the real machine (the Startup screen reads the real list);
+        # the advice rules themselves are tested in test_speedup.AdviceTest.
         self.page.click("#speedClean")
         self.page.wait_for_selector("#modal:not(.hidden)")
         self.assertIn("Khu cách ly", self.page.inner_text("#modal"))
