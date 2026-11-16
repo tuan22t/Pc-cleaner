@@ -79,7 +79,9 @@ jobs:
   windows-installer:
     # Packaging and install checks cost most of the CI minutes (macOS counts 10x):
     # run them for main, release tags and a manual run, not on every PR push.
-    if: github.event_name != 'pull_request'
+    # A test machine GitHub could not hand out (cancelled) does not stop the packages;
+    # a failed test does. A release still needs every test to pass (see release).
+    if: always() && github.event_name != 'pull_request' && needs.test.result != 'failure'
     needs: test
     runs-on: windows-2022
     env:
@@ -132,7 +134,9 @@ jobs:
   mac-dmg:
     # Packaging and install checks cost most of the CI minutes (macOS counts 10x):
     # run them for main, release tags and a manual run, not on every PR push.
-    if: github.event_name != 'pull_request'
+    # A test machine GitHub could not hand out (cancelled) does not stop the packages;
+    # a failed test does. A release still needs every test to pass (see release).
+    if: always() && github.event_name != 'pull_request' && needs.test.result != 'failure'
     needs: test
     # The build makes a universal2 app on either chip; the Intel pool is the one
     # GitHub has had free most often (arm64 runners were not handed out on 2026-11-13).
@@ -203,7 +207,7 @@ jobs:
   # signed update announcement to the public releases repository (docs/phat-hanh.md).
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows-installer, windows-installer-check, mac-dmg, mac-dmg-check]
+    needs: [test, windows-installer, windows-installer-check, mac-dmg, mac-dmg-check]
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
