@@ -112,6 +112,18 @@ Bật "Dọn dẹp tự động", chọn tần suất (mỗi ngày, mỗi tuần
 
 ![Cài đặt dọn dẹp theo lịch](images/lich.png)
 
+### 2.10. Tăng tốc máy
+
+Màn hình "Tăng tốc máy" cho biết điều gì đang làm máy chậm và sửa bằng những cách an toàn:
+
+- **Sức khỏe máy**: bộ nhớ RAM đang dùng, bộ xử lý đang bận bao nhiêu, ổ hệ thống còn trống bao nhiêu, và máy đã chạy liên tục bao lâu từ lần khởi động gần nhất.
+- **Nên làm gì**: lời khuyên xếp theo mức cần thiết, mỗi lời khuyên có nút dẫn tới chỗ sửa. Ví dụ RAM gần đầy thì đóng bớt ứng dụng, ổ hệ thống gần đầy thì dọn rác, máy chạy liên tục hơn 7 ngày thì nên khởi động lại, còn chương trình khởi động cùng máy có thể tắt.
+- **Dọn nhanh một chạm**: dọn các nhóm rác có nhãn An toàn (file tạm, bộ nhớ đệm). File vẫn vào khu cách ly và lấy lại được.
+- **Ứng dụng đang dùng nhiều tài nguyên**: các ứng dụng chiếm nhiều RAM và bộ xử lý nhất, gộp theo ứng dụng (ví dụ mọi tiến trình của Chrome là một dòng). Bấm "Đóng" thì ứng dụng được yêu cầu tự đóng nên có thể hỏi lưu công việc; nếu nó không đóng, phần mềm hỏi thêm có muốn buộc đóng không. Thành phần của hệ điều hành, phần mềm bảo mật, bộ gõ tiếng Việt, chương trình của người dùng khác và chính PC Cleaner có biểu tượng khóa và không thể đóng.
+- **Tinh chỉnh an toàn**: mỗi tinh chỉnh là một công tắc. Trước khi đổi, phần mềm ghi lại giá trị cũ; tắt công tắc hoặc bấm "Hoàn tác tất cả" là trả về đúng như trước. Trên Windows: chế độ nguồn Hiệu suất cao (máy có pin sẽ hết pin nhanh hơn), tắt hiệu ứng chuyển động, tắt hiệu ứng trong suốt. Trên macOS: tắt hiệu ứng mở cửa sổ, tắt hiệu ứng nảy ở Dock, dùng hiệu ứng thu nhỏ đơn giản. Không cần quyền quản trị.
+
+Phần mềm cố ý không có "dọn registry" hay "giải phóng RAM": những mẹo này không làm máy nhanh hơn thật, có khi còn gây lỗi.
+
 ## 3. Hướng dẫn sử dụng nhanh
 
 1. Mở phần mềm, ở trang Tổng quan bấm "Quét thư mục này" ở ô Thư mục cá nhân (nên bắt đầu ở đây), hoặc chọn một ổ đĩa hay một thư mục khác.

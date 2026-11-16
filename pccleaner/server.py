@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .platforms.common import background_thread
-from . import APP_NAME, __version__, dashboard, db, duplicates, i18n, junk, organizer, paths, quarantine, scanner, scheduler, similar, startup, updater, promo
+from . import APP_NAME, __version__, dashboard, db, duplicates, i18n, junk, organizer, paths, quarantine, scanner, scheduler, similar, speedup, startup, updater, promo
 from .i18n import _
 
 WEB_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).parent.parent)) / "pccleaner" / "web"
@@ -337,6 +337,19 @@ def route(method: str, path: str, q: dict, body: dict):
         return startup.create_restore_point()
     if key == ("GET", "startup-history"):
         return startup.history()
+    if key == ("GET", "speed"):
+        return speedup.overview(with_apps=q.get("apps", "1") != "0")
+    if key == ("POST", "speed-close"):
+        pids = body.get("pids") or []
+        if not isinstance(pids, list) or not pids:
+            raise ValueError(_("Chưa chọn ứng dụng nào"))
+        return speedup.close_app(str(body.get("name") or ""), [int(p) for p in pids], bool(body.get("force")))
+    if key == ("POST", "speed-tweak"):
+        return speedup.set_tweak(str(body["id"]), bool(body["on"]))
+    if key == ("POST", "speed-undo-all"):
+        return speedup.undo_all()
+    if key == ("POST", "speed-clean"):
+        return jobs.action(_("Đang dọn rác an toàn"), lambda c, p, u: speedup.clean_safe_junk(c, p, u))
     if key == ("POST", "organize-preview"):
         return organizer.preview(str(body.get("folder") or ""), bool(body.get("by_year", True)))
     if key == ("POST", "organize-apply"):

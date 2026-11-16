@@ -83,6 +83,7 @@ async function render(view) {
     if (view === "quarantine") return await renderQuarantine();
     if (view === "junk") return renderJunk();
     if (view === "startup") return await renderStartup();
+    if (view === "speed") return await renderSpeed();
     if (view === "organize") return renderOrganize();
     if (view === "schedule") return await renderSchedule();
     if (view === "settings") return renderSettings();
@@ -204,6 +205,7 @@ async function setLanguage(lang) {
   await loadLang(s.lang); applyAppName(); renderSponsorLink();
   $("#toast").classList.add("hidden"); // a message still showing is in the old language
   $("#setLang").value = s.lang;
+  state.speed = null; // its advice comes from the back end in the old language
   render(state.view); refreshBadge();
 }
 function renderSettings() {
@@ -749,6 +751,99 @@ async function toggleStartup(id, enable, el) {
   } catch (e) { el.checked = !enable; toast(e.message, { err: true }); }
   finally { el.disabled = false; }
 }
+
+// ---------- speed up ----------
+function uptimeText(s) {
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600);
+  return d ? t("{0} ngày {1} giờ", d, h) : t("{0} giờ {1} phút", h, Math.floor((s % 3600) / 60));
+}
+const pct = (v) => v == null ? "—" : Math.round(v) + "%";
+function meter(v, mid, high) { return v == null ? "" : `<div class="meter ${v >= high ? "high" : v >= mid ? "mid" : ""}"><div style="width:${Math.min(100, v).toFixed(1)}%"></div></div>`; }
+async function renderSpeed(again = true) {
+  if (!state.speed) {
+    $("#speedApps").innerHTML = `<div class="empty"><div class="spinner inline"></div> ${t("Đang kiểm tra máy…")}</div>`;
+    $("#speedTweaks").innerHTML = $("#speedTiles").innerHTML = $("#speedAdvice").innerHTML = "";
+  }
+  try { state.speed = await api("speed"); } catch (e) { $("#speedApps").innerHTML = `<div class="empty">${t("Không đọc được: {0}", esc(e.message))}</div>`; return; }
+  drawSpeed();
+  // Processor use per app needs two readings a moment apart (Windows): read once more.
+  clearTimeout(state.speedTimer);
+  if (again && state.speed.apps.some((a) => a.cpu == null)) state.speedTimer = setTimeout(() => { if (state.view === "speed") renderSpeed(false); }, 2500);
+}
+function drawSpeed() {
+  const d = state.speed, s = d.status;
+  const tile = (lbl, big, sub, bar = "") => `<div class="tile-stat"><span class="lbl">${lbl}</span><span class="big">${big}</span>${bar}<span class="sub">${sub}</span></div>`;
+  $("#speedTiles").innerHTML =
+    tile(t("Bộ nhớ RAM đang dùng"), pct(s.mem_pct), s.mem_total ? `${fmt(s.mem_used)} / ${fmt(s.mem_total)}` : "", meter(s.mem_pct, 70, 85)) +
+    tile(t("Bộ xử lý đang bận"), pct(s.cpu_pct), t("{0} {0|nhân|nhân}", num(s.cpu_count)), meter(s.cpu_pct, 50, 80)) +
+    tile(t("Ổ hệ thống còn trống"), s.disk_free_pct == null ? "—" : fmt(s.disk_free), s.disk_free_pct == null ? "" : t("{0} của {1}", pct(s.disk_free_pct), fmt(s.disk_total)), s.disk_free_pct == null ? "" : meter(100 - s.disk_free_pct, 75, 90)) +
+    tile(t("Đã chạy từ lần khởi động"), s.uptime == null ? "—" : uptimeText(s.uptime), t("khởi động lại định kỳ giúp máy nhanh hơn"));
+  const ICO = { warn: "⚠️", info: "💡", ok: "✅" };
+  const GO = { apps: ["#speedApps", t("Xem danh sách")], clean: ["#speedClean", t("Dọn ngay")], tweaks: ["#speedTweaks", t("Xem tinh chỉnh")], startup: ["startup", t("Mở danh sách")] };
+  $("#speedAdvice").innerHTML = d.advice.map((a) => `<div class="tip"><span class="tip-ico">${ICO[a.level] || "💡"}</span><span class="tip-text">${esc(a.text)}</span>${GO[a.view] ? `<a data-speedgo="${a.view}">${GO[a.view][1]} →</a>` : ""}</div>`).join("");
+  $$("[data-speedgo]").forEach((el) => el.onclick = () => {
+    const target = GO[el.dataset.speedgo][0];
+    if (!target.startsWith("#")) return show(target);
+    $(target).scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+  const apps = d.apps || [];
+  $("#speedApps").innerHTML = d.apps_error ? `<div class="empty">${t("Không đọc được: {0}", esc(d.apps_error))}</div>` : apps.length ? `<div class="row head"><div class="name">${t("Ứng dụng")}</div><div class="num">RAM</div><div class="num">${t("Bộ xử lý")}</div><div class="acts-speed"></div></div>` + apps.map((a, i) => `
+    <div class="row"><div class="name"><div class="t">${esc(a.name)}${a.count > 1 ? ` <span class="muted">· ${t("{0} tiến trình", num(a.count))}</span>` : ""}</div>
+      <div class="p">${a.why ? "🔒 " + esc(t(a.why)) : esc(a.path || "")}</div></div>
+      <div class="num">${fmt(a.mem)}</div><div class="num">${a.cpu == null ? "…" : a.cpu.toLocaleString(I18N.locale, { maximumFractionDigits: 1 }) + "%"}</div>
+      <div class="acts-speed">${a.closable ? `<button class="btn small" data-closeapp="${i}">${t("Đóng")}</button>` : "🔒"}</div></div>`).join("")
+    : `<div class="empty">${t("Không có ứng dụng nào.")}</div>`;
+  $$("[data-closeapp]").forEach((b) => b.onclick = () => closeApp(apps[+b.dataset.closeapp], b));
+  $("#speedTweaks").innerHTML = d.tweaks.length ? d.tweaks.map((w) => `
+    <div class="row ${w.on ? "" : "is-off"}"><div class="name"><div class="t">${esc(t(w.name))}${w.by_app ? ` <span class="tag ok">${t("Do ứng dụng bật")}</span>` : ""}</div>
+      <div class="p wrap">${esc(t(w.desc))}${w.note ? " " + esc(t(w.note)) : ""}</div>${w.unavailable ? `<div class="p wrap why">${esc(t(w.unavailable))}</div>` : ""}</div>
+      <label class="switch"><input type="checkbox" data-tweak="${esc(w.id)}" ${w.on ? "checked" : ""} ${w.unavailable ? "disabled" : ""}><span></span></label>
+      <span class="state">${w.unavailable ? t("Không dùng được") : w.on ? t("Đang bật") : t("Đang tắt")}</span></div>`).join("")
+    : `<div class="empty">${t("Không có tinh chỉnh nào cho hệ điều hành này.")}</div>`;
+  $$("[data-tweak]").forEach((c) => c.onchange = () => setTweak(c.dataset.tweak, c.checked, c));
+  $("#speedUndoAll").classList.toggle("hidden", !d.tweaks.some((w) => w.by_app));
+}
+async function closeApp(a, btn) {
+  if (!(await dialog(t("Đóng “{0}”?", a.name), `<p>${t("Hãy <b>lưu công việc</b> đang làm trong ứng dụng này trước. Ứng dụng sẽ được yêu cầu tự đóng, và có thể hỏi lưu.")}</p><p class="muted">${t("Đóng không gỡ cài đặt. Anh/chị mở lại ứng dụng bất cứ lúc nào.")}</p>`, t("Đóng ứng dụng")))) return;
+  btn.disabled = true;
+  try {
+    let r = await api("speed-close", { name: a.name, pids: a.pids });
+    if (r.running && await dialog(t("“{0}” chưa đóng", a.name), `<p>${t("Ứng dụng vẫn đang chạy, có thể đang chờ anh/chị lưu công việc hoặc không phản hồi.")}</p><p>${t("Buộc đóng sẽ <b>mất những gì chưa lưu</b> trong ứng dụng này.")}</p>`, t("Buộc đóng"), t("Để sau")) === true) {
+      r = await api("speed-close", { name: a.name, pids: a.pids, force: true });
+    }
+    toast(r.running ? t("“{0}” vẫn đang chạy.", a.name) : t("Đã đóng “{0}”.", a.name), { err: !!r.running });
+  } catch (e) { toast(e.message, { err: true }); }
+  renderSpeed();
+}
+async function setTweak(id, on, el) {
+  const w = state.speed.tweaks.find((x) => x.id === id);
+  el.disabled = true;
+  try {
+    await api("speed-tweak", { id, on });
+    toast(on ? t("Đã bật “{0}”.", t(w.name)) : t("Đã trả “{0}” về như cũ.", t(w.name)),
+      on ? { action: "↩ " + t("Hoàn tác"), onAction: async () => { try { await api("speed-tweak", { id, on: false }); toast(t("Đã trả “{0}” về như cũ.", t(w.name))); } catch (e) { toast(e.message, { err: true }); } renderSpeed(false); } } : {});
+  } catch (e) { toast(e.message, { err: true }); }
+  renderSpeed(false);
+}
+$("#speedReload").onclick = () => renderSpeed();
+$("#speedUndoAll").onclick = async () => {
+  if (!(await dialog(t("Hoàn tác tất cả tinh chỉnh?"), `<p>${t("Mọi cài đặt ứng dụng đã thay đổi sẽ được trả về như trước khi thay đổi.")}</p>`, t("Hoàn tác tất cả")))) return;
+  try {
+    const r = await api("speed-undo-all", {});
+    toast(r.failed.length ? t("Chưa trả lại được {0} tinh chỉnh.", num(r.failed.length)) : t("Đã trả lại {0} tinh chỉnh như cũ.", num(r.restored)), { err: r.failed.length > 0 });
+  } catch (e) { toast(e.message, { err: true }); }
+  renderSpeed(false);
+};
+$("#speedClean").onclick = async () => {
+  if (!(await dialog(t("Dọn rác an toàn?"), `<p>${t("Ứng dụng sẽ kiểm tra rồi dọn các mục rác hệ thống <b>an toàn</b> (file tạm, bộ nhớ đệm) vào <b>Khu cách ly</b>. Lấy lại được bất cứ lúc nào.")}</p><p class="muted">${t("Nên đóng trình duyệt trước khi dọn bộ nhớ đệm trình duyệt.")}</p>`, "🧹 " + t("Dọn ngay")))) return;
+  try {
+    const r = await runAction("speed-clean", {});
+    const msg = r.moved ? t("Đã dọn {0} file rác ({1}).", num(r.moved), fmt(r.bytes)) : t("Không có rác an toàn nào cần dọn.");
+    $("#speedCleanInfo").textContent = msg;
+    toast(msg + stopped(r), r.batch_ids.length ? { action: "↩ " + t("Hoàn tác"), onAction: () => undo(r.batch_ids) } : {});
+    refreshBadge(); state.junk = null; renderSpeed(false);
+  } catch (e) { toast(e.message, { err: true }); }
+};
 
 // ---------- folder organizer ----------
 function renderOrganize() {

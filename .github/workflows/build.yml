@@ -38,7 +38,7 @@ jobs:
       - name: Coverage of the shared core must stay at 80% or more
         shell: bash
         run: |
-          python -m coverage report --omit="pccleaner/app.py,pccleaner/platforms/windows.py,pccleaner/platforms/macos.py,pccleaner/platforms/linux.py" --fail-under=80
+          python -m coverage report --omit="pccleaner/app.py,pccleaner/platforms/windows.py,pccleaner/platforms/macos.py,pccleaner/platforms/linux.py,pccleaner/platforms/speed_windows.py,pccleaner/platforms/speed_macos.py,pccleaner/platforms/speed_linux.py" --fail-under=80
           echo "--- this system's own module:"
           python -m coverage report --include="pccleaner/platforms/*.py"
       - name: Rescan of 100,000 files must be 3x faster than the first scan
@@ -96,6 +96,12 @@ jobs:
         run: echo "version=$(python -c 'import pccleaner; print(pccleaner.__version__)')" >> "$GITHUB_OUTPUT"
       - name: Build the app and the installer (signed when the certificate is set up)
         run: powershell -File packaging\windows\build.ps1 -Version ${{ steps.v.outputs.version }}
+      - name: The packaged app starts and finds all its parts
+        shell: pwsh
+        run: |
+          Start-Process -Wait -FilePath 'dist\PCCleaner\PCCleaner.exe' -ArgumentList '--self-test','self-test.txt'
+          Get-Content self-test.txt
+          if (-not (Select-String -Path self-test.txt -Pattern '^ok ' -Quiet)) { exit 1 }
       - uses: actions/upload-artifact@v4
         with:
           name: PCCleaner-Setup-${{ steps.v.outputs.version }}
@@ -162,6 +168,11 @@ jobs:
           rm /tmp/cert.p12
       - name: Build the universal app and the DMG (signed and notarized when the account is set up)
         run: bash packaging/macos/build.sh ${{ steps.v.outputs.version }}
+      - name: The packaged app starts and finds all its parts
+        run: |
+          "dist/PC Cleaner.app/Contents/MacOS/PCCleaner" --self-test self-test.txt || true
+          cat self-test.txt
+          grep -q '^ok ' self-test.txt
       - uses: actions/upload-artifact@v4
         with:
           name: PCCleaner-${{ steps.v.outputs.version }}-mac

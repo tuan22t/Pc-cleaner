@@ -253,3 +253,17 @@ nav a.nav-bottom { margin-top: auto; }
 .nav-sponsor { font-size: 11px; color: var(--side-text); opacity: .65; padding: 6px 10px; text-decoration: none; line-height: 1.4; }
 .nav-sponsor:hover { opacity: 1; }
 @media (max-width: 720px) { .promo-row { flex-direction: column; align-items: flex-start; } .promo-img { width: 100%; height: auto; aspect-ratio: 40 / 21; } }
+/* speed up */
+.speed-top { margin-top: 16px; }
+.speed-top .card h2 { margin: 0 0 10px; }
+.toolbar h2 { margin: 12px 0 0; }
+.tips { display: flex; flex-direction: column; gap: 8px; }
+.tip { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; }
+.tip .tip-ico { flex: none; width: 20px; text-align: center; }
+.tip .tip-text { flex: 1; }
+.tip a { color: var(--accent); cursor: pointer; white-space: nowrap; font-size: 13px; }
+.small-text { font-size: 12px; margin-top: 8px; }
+.tile-stat .meter { margin: 6px 0 2px; }
+.row .num { width: 80px; flex: none; text-align: right; font-variant-numeric: tabular-nums; }
+.row .acts-speed { width: 110px; flex: none; display: flex; justify-content: flex-end; }
+.row.head { font-size: 12px; color: var(--muted); min-height: 30px; }

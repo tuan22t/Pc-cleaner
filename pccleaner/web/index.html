@@ -24,6 +24,7 @@
       <a href="#" data-view="types" data-needs-scan><span class="ni">🗂️</span><span data-i18n>Theo loại file</span></a>
       <p data-i18n id="navHint" class="nav-hint">Hãy quét một ổ đĩa hoặc thư mục ở trang Tổng quan để mở các báo cáo này.</p>
       <div data-i18n class="nav-sep">Dọn dẹp hệ thống</div>
+      <a href="#" data-view="speed"><span class="ni">⚡</span><span data-i18n>Tăng tốc máy</span></a>
       <a href="#" data-view="junk"><span class="ni">🗑️</span><span data-i18n>Rác hệ thống</span></a>
       <a href="#" data-view="startup"><span class="ni">🚀</span><span data-i18n>Khởi động cùng máy</span></a>
       <a href="#" data-view="organize"><span class="ni">📦</span><span data-i18n>Sắp xếp thư mục</span></a>
@@ -136,6 +137,28 @@
       </div>
       <div id="simSummary" class="summary"></div>
       <div id="simList"></div>
+    </section>
+
+    <section id="view-speed" class="view">
+      <h1 data-i18n>Tăng tốc máy</h1>
+      <p data-i18n class="muted">Xem điều gì đang làm máy chậm và sửa bằng những cách an toàn. Kiểm tra chỉ đọc; mọi thay đổi đều hỏi trước và hoàn tác được.</p>
+      <div id="speedTiles" class="tiles"></div>
+      <div class="two-col speed-top">
+        <div class="card"><h2 data-i18n>Nên làm gì</h2><div id="speedAdvice" class="tips"></div></div>
+        <div class="card"><h2 data-i18n>Dọn nhanh một chạm</h2>
+          <p data-i18n class="muted">Dọn file tạm và bộ nhớ đệm được đánh dấu “An toàn”. File vào khu cách ly trước, lấy lại được.</p>
+          <button data-i18n id="speedClean" class="btn primary">🧹 Dọn rác an toàn ngay</button>
+          <div id="speedCleanInfo" class="muted small-text"></div>
+        </div>
+      </div>
+      <div class="toolbar"><h2 data-i18n>Ứng dụng đang dùng nhiều tài nguyên</h2><span class="spacer"></span>
+        <button data-i18n id="speedReload" class="btn ghost small">↻ Làm mới</button></div>
+      <p data-i18n class="muted">Đóng ứng dụng không dùng đến giúp giải phóng bộ nhớ ngay. Ứng dụng được yêu cầu tự đóng nên có thể hỏi lưu công việc. Thành phần hệ thống và phần mềm bảo mật có biểu tượng 🔒 và không thể đóng.</p>
+      <div id="speedApps" class="list"></div>
+      <div class="toolbar"><h2 data-i18n>Tinh chỉnh an toàn</h2><span class="spacer"></span>
+        <button data-i18n id="speedUndoAll" class="btn ghost small hidden">↩ Hoàn tác tất cả</button></div>
+      <div id="speedTweaks" class="list"></div>
+      <div data-i18n class="info">Ứng dụng không dùng các mẹo như “dọn registry” hay “giải phóng RAM” vì chúng không làm máy nhanh hơn thật, có khi còn gây lỗi.</div>
     </section>
 
     <section id="view-junk" class="view">

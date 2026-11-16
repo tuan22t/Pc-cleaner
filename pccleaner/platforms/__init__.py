@@ -26,3 +26,13 @@ def load():
     if _loaded is None:
         _loaded = importlib.import_module(f"{__name__}.{name()}")
     return _loaded
+
+
+def _bundle():  # pragma: no cover - never called
+    """Names every platform module in plain import statements.
+
+    ``load()`` imports by a name built at run time, which packaging tools
+    (PyInstaller) cannot see; without this, a packaged app crashed on start
+    with "No module named pccleaner.platforms.windows".
+    """
+    from . import linux, macos, speed_linux, speed_macos, speed_windows, windows  # noqa: F401

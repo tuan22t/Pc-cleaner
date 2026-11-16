@@ -12,6 +12,7 @@ Tài liệu thuyết minh tính năng và nguyên lý hoạt động: [docs/thuy
 - **File trùng lặp**: lọc theo kích thước → băm nhanh đầu/cuối file → SHA-256 toàn bộ. Chỉ liệt kê file giống nhau tuyệt đối; mặc định giữ bản cũ nhất.
 - **Khu cách ly + hoàn tác**: không xóa thẳng. File được chuyển vào khu cách ly, có nút *Hoàn tác* trả về chỗ cũ, và *Xóa hẳn* khi chắc chắn.
 - **Nhật ký** mọi thao tác.
+- **Tăng tốc máy**: xem RAM, bộ xử lý, ổ hệ thống, thời gian chạy liên tục và lời khuyên nên làm gì trước; danh sách ứng dụng nặng (gộp theo ứng dụng) để đóng bớt, có khóa với thành phần hệ thống và phần mềm bảo mật; dọn rác an toàn một chạm; tinh chỉnh an toàn hoàn tác được (Windows: chế độ nguồn Hiệu suất cao, tắt hiệu ứng chuyển động, tắt hiệu ứng trong suốt; macOS: hiệu ứng cửa sổ và Dock). Không dùng mẹo "dọn registry" hay "giải phóng RAM".
 - Kết quả quét và mã băm được lưu trong SQLite, lần sau quét trùng nhanh hơn.
 
 ## Nguyên tắc an toàn
