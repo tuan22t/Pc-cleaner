@@ -200,6 +200,20 @@ def save(cfg_in: dict) -> dict:
     return get()
 
 
+def remove_for_uninstall() -> None:
+    """Before the app is removed: take the scheduled task (or LaunchAgent) off the
+    system, so nothing tries to start a program that is gone. Data is kept."""
+    _unregister()
+    raw = db.get_setting("schedule")
+    if raw:
+        try:
+            cfg = json.loads(raw)
+            cfg["enabled"] = False
+            db.set_setting("schedule", json.dumps(cfg))
+        except ValueError:
+            pass
+
+
 def record_skipped(why: str) -> None:
     db.set_setting("schedule_last_run", json.dumps({"ts": time.time(), "skipped": why}))
 

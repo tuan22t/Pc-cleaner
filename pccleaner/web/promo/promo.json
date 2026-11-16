@@ -1,0 +1,144 @@
+{
+ "sponsor": {
+  "vi": "Tân An Palace và Zen Hotel",
+  "en": "Tân An Palace and Zen Hotel"
+ },
+ "places": [
+  {
+   "id": "tananpalace-hotel",
+   "name": "Khách sạn Tân An Palace",
+   "tagline": {
+    "vi": "Khách sạn ngay trung tâm Hải Phòng, tiện cho du lịch, công tác và hội nghị.",
+    "en": "A hotel in central Hai Phong, handy for holidays, business trips and conferences."
+   },
+   "address": "22 Hồng Bàng, Hải Phòng",
+   "phone": "0225 3529 168",
+   "links": {
+    "website": "https://hotel.tananpalace.com/",
+    "maps": "https://maps.app.goo.gl/578vUkvYq6NHB8BJ9",
+    "facebook": "https://www.facebook.com/datphongtananpalace"
+   },
+   "icon": "🏨",
+   "images": [
+    {
+     "file": "tananpalace-hotel-1.jpg",
+     "url": "https://hotel.tananpalace.com/assets/img/superior-phong-ngu-1200.webp"
+    },
+    {
+     "file": "tananpalace-hotel-2.jpg",
+     "url": "https://hotel.tananpalace.com/assets/img/toa-nha-flycam-640.webp"
+    },
+    {
+     "file": "tananpalace-hotel-3.jpg",
+     "url": "https://hotel.tananpalace.com/assets/img/sanh-le-tan-640.webp"
+    },
+    {
+     "file": "tananpalace-hotel-4.jpg",
+     "url": "https://hotel.tananpalace.com/assets/img/twin-phong-640.webp"
+    }
+   ]
+  },
+  {
+   "id": "tananpalace-wedding",
+   "name": "Tiệc cưới Tân An Palace",
+   "tagline": {
+    "vi": "Trung tâm tiệc cưới và sự kiện, sảnh 100–700 khách, có thiệp cưới online miễn phí.",
+    "en": "Wedding and event venue with halls for 100–700 guests and free online wedding invitations."
+   },
+   "address": "22 Hồng Bàng, Hải Phòng",
+   "phone": "0989 490 850",
+   "links": {
+    "website": "https://tananpalace.com/",
+    "maps": "https://maps.google.com/maps?cid=5300943847785742150",
+    "facebook": "https://www.facebook.com/tananpalacehaiphong"
+   },
+   "icon": "💒",
+   "images": [
+    {
+     "file": "tananpalace-wedding-1.jpg",
+     "url": "https://tananpalace.com/wp-content/uploads/2024/10/VTD_0063.jpg"
+    },
+    {
+     "file": "tananpalace-wedding-2.jpg",
+     "url": "https://tananpalace.com/wp-content/uploads/2024/10/KP_07425-1024x683.jpg"
+    },
+    {
+     "file": "tananpalace-wedding-3.jpg",
+     "url": "https://tananpalace.com/wp-content/uploads/2024/10/Photo-233-1024x681.jpg"
+    },
+    {
+     "file": "tananpalace-wedding-4.jpg",
+     "url": "https://tananpalace.com/wp-content/uploads/2024/10/VTD_9474.jpg"
+    }
+   ]
+  },
+  {
+   "id": "zen-love-station",
+   "name": "Zen Love Station",
+   "tagline": {
+    "vi": "7 phòng chủ đề riêng tư, kín đáo tại Vinhomes Imperia, Hải Phòng.",
+    "en": "Seven private, discreet themed rooms at Vinhomes Imperia, Hai Phong."
+   },
+   "address": "MHT 14-07, Vinhomes Imperia, Hồng Bàng, Hải Phòng",
+   "phone": "0225 2899 998",
+   "links": {
+    "website": "https://zenlovehotel.top/",
+    "maps": "https://maps.google.com/maps?cid=9873489321562503094",
+    "facebook": "https://www.facebook.com/108719150522594"
+   },
+   "icon": "🏨",
+   "images": [
+    {
+     "file": "zen-love-station-1.jpg",
+     "url": "https://zenlovehotel.top/images/khach-san-tinh-yeu-hai-phong-phong-lan-que-phuong-anh-bia-1600x1000.jpg"
+    },
+    {
+     "file": "zen-love-station-2.jpg",
+     "url": "https://zenlovehotel.top/images/khach-san-tinh-yeu-hai-phong-phong-amazon-1200x1000.jpg"
+    },
+    {
+     "file": "zen-love-station-3.jpg",
+     "url": "https://zenlovehotel.top/images/khach-san-tinh-yeu-hai-phong-phong-city-by-night-1200x1000.jpg"
+    },
+    {
+     "file": "zen-love-station-4.jpg",
+     "url": "https://zenlovehotel.top/images/khach-san-tinh-yeu-hai-phong-phong-camping-garden-1200x1000.jpg"
+    }
+   ]
+  },
+  {
+   "id": "zen-halong",
+   "name": "Zen Hotel Hạ Long",
+   "tagline": {
+    "vi": "9 phòng concept riêng tư, kín đáo tại KĐT Monbay, Hạ Long.",
+    "en": "Nine private, discreet concept rooms at Monbay, Ha Long."
+   },
+   "address": "A9-06 KĐT Monbay, Hạ Long, Quảng Ninh",
+   "phone": "0203 356 1986",
+   "links": {
+    "website": "https://halong.zenlovehotel.top/",
+    "maps": "https://www.google.com/maps/place/?q=place_id:ChIJUa0SZCxXSjEReKUy0-P_lJo",
+    "facebook": "https://www.facebook.com/100305381635417"
+   },
+   "icon": "🏨",
+   "images": [
+    {
+     "file": "zen-halong-1.jpg",
+     "url": "https://halong.zenlovehotel.top/images/khach-san-tinh-yeu-ha-long-kama-art-anh-bia-1200x750.jpg"
+    },
+    {
+     "file": "zen-halong-2.jpg",
+     "url": "https://halong.zenlovehotel.top/images/khach-san-tinh-yeu-ha-long-sumo-arena-1080x900.jpg"
+    },
+    {
+     "file": "zen-halong-3.jpg",
+     "url": "https://halong.zenlovehotel.top/images/khach-san-tinh-yeu-ha-long-garden-by-monbay-1080x900.jpg"
+    },
+    {
+     "file": "zen-halong-4.jpg",
+     "url": "https://halong.zenlovehotel.top/images/khach-san-tinh-yeu-ha-long-chinese-miracle-1080x900.jpg"
+    }
+   ]
+  }
+ ]
+}

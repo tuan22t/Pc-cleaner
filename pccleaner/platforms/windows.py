@@ -4,6 +4,7 @@ Imported only on Windows.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import os
 import time
@@ -20,6 +21,16 @@ RUN = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN32 = r"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run"
 APPROVED = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved"
 HIVES = {"HKCU": winreg.HKEY_CURRENT_USER, "HKLM": winreg.HKEY_LOCAL_MACHINE}
+
+
+def _ps_list(script: str) -> list[dict]:
+    """A PowerShell query that prints JSON; [] when it fails (the listing goes on without it)."""
+    try:
+        raw = _ps(script).strip()
+        out = json.loads(raw) if raw else []
+    except Exception:  # noqa: BLE001
+        return []
+    return [out] if isinstance(out, dict) else out
 
 def _reg_values(hive, key) -> list[tuple[str, object]]:
     out = []
@@ -104,17 +115,16 @@ def _win_items() -> list[dict]:
                 "label": label, "why": why,
             })
     # Scheduled tasks (non-Microsoft)
-    try:
-        raw = _ps(
+    # The two PowerShell queries are slow to start (seconds each on a cold machine): run them side by side.
+    with concurrent.futures.ThreadPoolExecutor(2) as pool:
+        tasks_job = pool.submit(_ps_list,
             "Get-ScheduledTask | Where-Object { $_.TaskPath -notlike '\\Microsoft\\*' } | ForEach-Object {"
             " [pscustomobject]@{ name=$_.TaskName; path=$_.TaskPath; state=[string]$_.State; author=$_.Author;"
-            " exec=(($_.Actions | ForEach-Object { $_.Execute + ' ' + $_.Arguments }) -join '; ') } } | ConvertTo-Json -Compress"
-        ).strip()
-        tasks = json.loads(raw) if raw else []
-        if isinstance(tasks, dict):
-            tasks = [tasks]
-    except Exception:  # noqa: BLE001
-        tasks = []
+            " exec=(($_.Actions | ForEach-Object { $_.Execute + ' ' + $_.Arguments }) -join '; ') } } | ConvertTo-Json -Compress")
+        services_job = pool.submit(_ps_list,
+            "Get-CimInstance Win32_Service | ForEach-Object { [pscustomobject]@{ name=$_.Name; display=$_.DisplayName;"
+            " mode=$_.StartMode; state=$_.State; path=$_.PathName } } | ConvertTo-Json -Compress")
+        tasks, services = tasks_job.result(), services_job.result()
     for t in tasks:
         label, why = classify(t.get("name", ""), t.get("exec", ""), t.get("author", ""))
         items.append({
@@ -123,16 +133,6 @@ def _win_items() -> list[dict]:
             "admin": True, "label": label, "why": why,
         })
     # Services: third-party, automatic start (plus those we switched to Manual)
-    try:
-        raw = _ps(
-            "Get-CimInstance Win32_Service | ForEach-Object { [pscustomobject]@{ name=$_.Name; display=$_.DisplayName;"
-            " mode=$_.StartMode; state=$_.State; path=$_.PathName } } | ConvertTo-Json -Compress"
-        ).strip()
-        services = json.loads(raw) if raw else []
-        if isinstance(services, dict):
-            services = [services]
-    except Exception:  # noqa: BLE001
-        services = []
     windir = os.path.normcase(os.environ.get("SystemRoot", r"C:\Windows"))
     for s in services:
         p = os.path.normcase((s.get("path") or "").strip('"'))

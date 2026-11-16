@@ -63,6 +63,12 @@ def _already_running() -> None:
         pass
 
 
+def _update_check() -> None:
+    from . import updater
+
+    updater.check_if_due()  # at most once a day, never downloads by itself
+
+
 def _self_test(out: str) -> int:
     """Used by the build: load every part a packaged app needs, write "ok" to ``out``.
 
@@ -70,11 +76,13 @@ def _self_test(out: str) -> int:
     at run time (the operating-system parts in pccleaner.platforms).
     """
     try:
-        from . import junk, platforms, speedup, startup  # noqa: F401
+        from . import junk, platforms, promo, speedup, startup, updater  # noqa: F401
 
         platforms.load()
         speedup.status()
         junk.categories()
+        promo.places()
+        updater.status()
         result = f"ok {platforms.name()} {__version__}"
     except Exception as e:  # noqa: BLE001
         import traceback
@@ -91,11 +99,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--headless", action="store_true", help=_("chỉ chạy máy chủ (dùng cho kiểm thử)"))
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--auto-clean", action="store_true", help=_("dọn dẹp tự động theo lịch rồi thoát"))
+    ap.add_argument("--before-uninstall", action="store_true", help=_("gỡ lịch dọn tự động khỏi hệ thống trước khi gỡ ứng dụng"))
     ap.add_argument("--self-test", metavar="FILE", help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
 
     if args.self_test:
         return _self_test(args.self_test)
+
+    if args.before_uninstall:
+        from . import scheduler
+
+        scheduler.remove_for_uninstall()
+        _say(_("Đã gỡ lịch dọn tự động. Dữ liệu và khu cách ly vẫn ở {0}", paths.data_dir()))
+        return 0
 
     if args.auto_clean:
         from . import scheduler
@@ -113,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     _startup_recovery()
     threading.Thread(target=_schedule_self_check, daemon=True).start()
+    threading.Thread(target=_update_check, daemon=True).start()
 
     httpd, url, _token = start_server(args.port)
     _say(_("{0} {1} đang chạy tại {2}", APP_NAME, __version__, url))

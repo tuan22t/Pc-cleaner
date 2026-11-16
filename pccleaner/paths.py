@@ -5,12 +5,13 @@ import os
 import string
 import sys
 from pathlib import Path
+from . import APP_ID
 from .i18n import _
 
 IS_WINDOWS = sys.platform.startswith("win")
 IS_MAC = sys.platform == "darwin"
 
-APP_NAME = "PCCleaner"
+APP_NAME = APP_ID  # folder names of the user's data (see APP_ID)
 
 
 def data_dir() -> Path:

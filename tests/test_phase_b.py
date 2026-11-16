@@ -156,6 +156,16 @@ class IncrementalScanTest(Base):
         for sid in left:
             self.assertEqual(len(snapshot(sid)[1]), 2)
 
+    def test_app_prunes_after_showing_the_result(self):
+        self.tree(dirs=1, per_dir=1)
+        for _ in range(5):
+            server.route("POST", "/api/scan", {}, {"path": str(self.root)})
+            server.jobs.thread.join(30)
+            self.assertEqual(server.jobs.state["state"], "done")
+        n = db.connect().execute("SELECT COUNT(*) FROM scans WHERE root=?", (str(self.root),)).fetchone()[0]
+        self.assertEqual(n, scanner.KEEP_SCANS_PER_FOLDER)
+        server.jobs = server.JobManager()  # leave no finished job behind for other tests
+
     def test_cancelled_scan_leaves_nothing(self):
         self.tree()
         cancel = threading.Event()

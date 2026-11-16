@@ -233,6 +233,27 @@ class ScheduleTest(Base):
             scheduler.save({"enabled": False})
         self.assertFalse(scheduler.is_registered())
 
+    @unittest.skipUnless(paths.IS_WINDOWS or paths.IS_MAC, "Windows/macOS only")
+    def test_before_uninstall_removes_task_keeps_data(self):
+        from pccleaner import app
+
+        f = self.root / "keep.bin"
+        f.write_bytes(b"k" * 100)
+        batch = quarantine.quarantine([str(f)], "t")["batch_id"]
+        scheduler.save({"enabled": True, "frequency": "weekly", "hour": 3, "junk": True, "purge_days": 30})
+        try:
+            self.assertTrue(scheduler.is_registered())
+            self.assertEqual(app.main(["--before-uninstall"]), 0)
+            self.assertFalse(scheduler.is_registered())
+            self.assertFalse(scheduler.get()["enabled"])
+            self.assertTrue(any(b["batch_id"] == batch for b in quarantine.batches()))
+        finally:
+            scheduler.save({"enabled": False})
+
+    def test_before_uninstall_without_schedule(self):
+        scheduler.remove_for_uninstall()  # nothing registered: must not fail
+        self.assertFalse(scheduler.get()["enabled"])
+
     def test_purge_older_than(self):
         f = self.root / "old.bin"
         f.write_bytes(b"z" * 500)
