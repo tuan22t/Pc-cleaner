@@ -21,6 +21,21 @@ class PromoTest(unittest.TestCase):
             self.assertEqual(p["links"], ["website", "maps", "facebook"])
             self.assertTrue(p["tagline"]["vi"] and p["tagline"]["en"])
 
+    def test_photos_listed_only_when_present(self):
+        raw = promo._load()
+        for p in raw["places"]:
+            self.assertGreaterEqual(len(p["images"]), 2)
+            for im in p["images"]:
+                self.assertTrue(im["url"].startswith("https://"))
+        place = raw["places"][0]
+        with tempfile.TemporaryDirectory(dir=_BASE) as d:
+            (Path(d) / place["images"][1]["file"]).write_bytes(b"jpg")
+            with mock.patch.object(promo, "_dir", return_value=Path(d)), \
+                    mock.patch.object(promo, "_load", return_value=raw):
+                got = {x["id"]: x["images"] for x in promo.places()["places"]}
+        self.assertEqual(got[place["id"]], ["promo/" + place["images"][1]["file"]])
+        self.assertEqual(got[raw["places"][1]["id"]], [])
+
     def test_open_only_shipped_links(self):
         with mock.patch("webbrowser.open") as opened:
             server.route("POST", "/api/open-link", {}, {"id": "tananpalace-wedding", "kind": "website"})

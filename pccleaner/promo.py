@@ -41,11 +41,11 @@ def places() -> dict:
     data = _load()
     out = []
     for p in data.get("places", []):
-        img = p.get("image")
+        imgs = [f"promo/{i['file']}" for i in p.get("images", []) if (_dir() / i["file"]).is_file()]
         out.append({
             "id": p["id"], "name": p["name"], "tagline": p.get("tagline", {}), "address": p.get("address", ""),
             "phone": p.get("phone", ""), "links": [k for k in KINDS if k in p.get("links", {})], "icon": p.get("icon", ""),
-            "image": f"promo/{img}" if img and (_dir() / img).is_file() else None,
+            "images": imgs,  # photos fetched at build time; none: a plain tile
         })
     return {"sponsor": data.get("sponsor", {}), "places": out}
 

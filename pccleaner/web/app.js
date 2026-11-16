@@ -227,7 +227,10 @@ async function loadPromo() {
 }
 const promoText = (o) => (o && (o[I18N.lang] || o.vi)) || "";
 function promoPlace(p, compact) {
-  const img = p.image ? `<img class="promo-img" src="${esc(p.image)}" alt="">`
+  const imgs = p.images || [];
+  const img = imgs.length
+    ? `<div class="promo-img promo-pics" data-pics="${imgs.length}">${imgs.map((src, k) =>
+      `<img src="${esc(src)}" alt="" decoding="async" class="${k ? "" : "on"}">`).join("")}</div>`
     : `<div class="promo-img promo-ph" aria-hidden="true">${esc(p.icon || "🏨")}</div>`;
   const btns = p.links.map((k) => `<button class="btn ${compact ? "small " : ""}ghost" data-promo="${esc(p.id)}" data-kind="${k}">${esc(PROMO_BTN[k]())}</button>`).join("");
   return `${img}<div class="promo-body"><h3 translate="no">${esc(p.name)}</h3><p>${esc(promoText(p.tagline))}</p>
@@ -242,6 +245,23 @@ async function renderPromoCard() {
   box.classList.remove("hidden");
   box.querySelectorAll("[data-promo-dot]").forEach((b) => b.onclick = () => { state.promoIdx = +b.dataset.promoDot; renderPromoCard(); });
 }
+// Photos change every few seconds; after the last photo the home card moves to the next
+// place. Nothing runs while the window is hidden or when the system asks for less motion.
+const PROMO_EVERY = 5000;
+function promoTick() {
+  if (document.hidden || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  document.querySelectorAll(".promo-pics").forEach((box) => {
+    if (!box.offsetParent) return; // not on screen
+    const pics = box.querySelectorAll("img"); if (pics.length < 2 && !box.closest("#promoCard")) return;
+    const cur = [...pics].findIndex((im) => im.classList.contains("on"));
+    if (box.closest("#promoCard") && cur === pics.length - 1 && state.promo && state.promo.places.length > 1) {
+      state.promoIdx = (state.promoIdx + 1) % state.promo.places.length; renderPromoCard(); return;
+    }
+    pics[cur].classList.remove("on"); pics[(cur + 1) % pics.length].classList.add("on");
+  });
+}
+setInterval(promoTick, PROMO_EVERY);
+
 async function renderPromoList() {
   const d = await loadPromo();
   $("#promoList").innerHTML = d.places.map((p) => `<div class="card promo-row compact">${promoPlace(p, true)}</div>`).join("");
