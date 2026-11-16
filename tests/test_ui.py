@@ -34,7 +34,7 @@ except ImportError:  # pragma: no cover - depends on the machine
 VI = re.compile(r"[À-ÖØ-öø-ỹđĐ]")  # Latin letters with marks (not × or ÷)
 SHOTS = os.environ.get("PCCLEANER_SCREENSHOTS")
 VIEWS = ["home", "usage", "large", "old", "types", "dups", "similar", "junk", "startup", "organize", "schedule",
-         "quarantine", "settings"]
+         "quarantine", "settings", "speed"]
 
 
 def _browser(p):
@@ -184,6 +184,23 @@ class UiTest(unittest.TestCase):
         for v in VIEWS:
             self.go(v)
             self.shot(f"vi-{VIEWS.index(v) + 1:02d}-{v}")
+
+    def test_6b_speed_up(self):
+        """The Speed up screen only reads: nothing is closed, cleaned or changed here."""
+        dashboard.remember("last_startup", {"total": 9, "enabled": 7, "can_disable": 4})  # the Startup screen replaced it
+        self.go("speed")
+        self.page.wait_for_selector("#speedTiles .tile-stat")
+        self.assertEqual(self.page.locator("#speedTiles .tile-stat").count(), 4)
+        self.page.wait_for_selector("#speedApps .row:not(.head)")
+        self.assertGreater(self.page.locator("#speedAdvice .tip").count(), 0)
+        self.assertIn("Có 4 chương trình khởi động", self.page.inner_text("#speedAdvice"))
+        self.page.click("#speedClean")
+        self.page.wait_for_selector("#modal:not(.hidden)")
+        self.assertIn("Khu cách ly", self.page.inner_text("#modal"))
+        self.page.click("#modalCancel")
+        self.page.wait_for_selector("#modal.hidden", state="attached")
+        self.page.wait_for_timeout(3000)  # the second reading (processor use per app) arrives
+        self.shot("vi-14-speed")
 
     def test_7_english_and_dark_mode(self):
         self.go("settings")

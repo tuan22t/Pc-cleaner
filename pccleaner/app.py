@@ -63,13 +63,39 @@ def _already_running() -> None:
         pass
 
 
+def _self_test(out: str) -> int:
+    """Used by the build: load every part a packaged app needs, write "ok" to ``out``.
+
+    Catches a package that is missing a module the app only imports by name
+    at run time (the operating-system parts in pccleaner.platforms).
+    """
+    try:
+        from . import junk, platforms, speedup, startup  # noqa: F401
+
+        platforms.load()
+        speedup.status()
+        junk.categories()
+        result = f"ok {platforms.name()} {__version__}"
+    except Exception as e:  # noqa: BLE001
+        import traceback
+
+        result = "error " + repr(e) + "\n" + traceback.format_exc()
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(result)
+    return 0 if result.startswith("ok") else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="pccleaner", description=_("Dọn dẹp máy tính"))
     ap.add_argument("--browser", action="store_true", help=_("mở trong trình duyệt thay vì cửa sổ riêng"))
     ap.add_argument("--headless", action="store_true", help=_("chỉ chạy máy chủ (dùng cho kiểm thử)"))
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--auto-clean", action="store_true", help=_("dọn dẹp tự động theo lịch rồi thoát"))
+    ap.add_argument("--self-test", metavar="FILE", help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
+
+    if args.self_test:
+        return _self_test(args.self_test)
 
     if args.auto_clean:
         from . import scheduler

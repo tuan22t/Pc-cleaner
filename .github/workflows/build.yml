@@ -37,7 +37,7 @@ jobs:
       - name: Coverage of the shared core must stay at 80% or more
         shell: bash
         run: |
-          python -m coverage report --omit="pccleaner/app.py,pccleaner/platforms/windows.py,pccleaner/platforms/macos.py,pccleaner/platforms/linux.py" --fail-under=80
+          python -m coverage report --omit="pccleaner/app.py,pccleaner/platforms/windows.py,pccleaner/platforms/macos.py,pccleaner/platforms/linux.py,pccleaner/platforms/speed_windows.py,pccleaner/platforms/speed_macos.py,pccleaner/platforms/speed_linux.py" --fail-under=80
           echo "--- this system's own module:"
           python -m coverage report --include="pccleaner/platforms/*.py"
       - name: Rescan of 100,000 files must be 3x faster than the first scan
@@ -63,8 +63,21 @@ jobs:
         shell: bash
         run: |
           SEP=":"; [ "$RUNNER_OS" = "Windows" ] && SEP=";"
-          pyinstaller --noconfirm --windowed --name PCCleaner \
+          # The operating-system parts (pccleaner.platforms.*) are imported by a name built
+          # at run time. "python -m" puts this folder on the path, so --collect-submodules
+          # finds the package (plain "pyinstaller" found nothing and the app crashed on start).
+          python -m PyInstaller --noconfirm --windowed --name PCCleaner --collect-submodules pccleaner \
             --add-data "pccleaner/web${SEP}pccleaner/web" run.py
+      - name: The packaged app starts and finds all its parts
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            powershell -NoProfile -Command "Start-Process -Wait -FilePath 'dist\PCCleaner\PCCleaner.exe' -ArgumentList '--self-test','self-test.txt'"
+          else
+            dist/PCCleaner.app/Contents/MacOS/PCCleaner --self-test self-test.txt
+          fi
+          cat self-test.txt
+          grep -q '^ok ' self-test.txt
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
