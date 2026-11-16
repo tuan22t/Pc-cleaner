@@ -111,6 +111,7 @@ jobs:
 
   windows-installer-check:
     # Install, update and uninstall for real, on throw-away machines only.
+    if: always() && needs.windows-installer.result == 'success'
     needs: windows-installer
     strategy:
       fail-fast: false
@@ -184,6 +185,7 @@ jobs:
 
   mac-dmg-check:
     # The same DMG on an Intel Mac and an Apple-chip Mac.
+    if: always() && needs.mac-dmg.result == 'success'
     needs: mac-dmg
     strategy:
       fail-fast: false
